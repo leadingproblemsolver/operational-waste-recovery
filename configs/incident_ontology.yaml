@@ -1,0 +1,41 @@
+# MODE: HYBRID
+# BRAAT BLOCK: Incident reasoning ontology
+# MISSION: Capture reasoning, not documentation.
+# MANUAL EDITING: Not required for local proof path.
+
+node_types:
+  observation:
+    meaning: "What was seen."
+  hypothesis:
+    meaning: "What the team believed might explain the observation."
+  test:
+    meaning: "Action used to evaluate a hypothesis."
+  result:
+    meaning: "What happened after a test."
+  failed_test:
+    meaning: "Test that consumed investigation effort but did not resolve the incident."
+  fix:
+    meaning: "Action that resolved or materially improved the incident."
+  outcome:
+    meaning: "Final confirmed result."
+  root_cause:
+    meaning: "Confirmed causal explanation."
+
+edge_types:
+  related_to:
+    meaning: "Node was created as a continuation or consequence of another node."
+  supports:
+    meaning: "Node increases confidence in another node."
+  refutes:
+    meaning: "Node reduces confidence in another node."
+  resolved_by:
+    meaning: "Fix or outcome resolved the incident path."
+
+confidence_scale:
+  min: 0.0
+  max: 1.0
+  guidance:
+    0.2: "weak belief"
+    0.5: "plausible"
+    0.8: "strong evidence"
+    1.0: "confirmed"

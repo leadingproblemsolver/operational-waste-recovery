@@ -1,0 +1,18 @@
+{
+  "event_id": "",
+  "timestamp": "",
+  "user_id": "",
+  "repo_id": "",
+  "source": "",
+  "model_name": "",
+  "prompt_tokens": 0,
+  "completion_tokens": 0,
+  "total_tokens": 0,
+  "cost_usd": 0.0,
+  "classification": "",
+  "prompt_hash": "",
+  "context_hash": "",
+  "conversation_hash": "",
+  "files_read": [],
+  "files_modified": []
+}

@@ -1,0 +1,90 @@
+# ============================================================
+# OWRP REQUIREMENTS
+# MODE: HYBRID
+# PURPOSE:
+# Minimal dependencies for local proof.
+#
+# RULE:
+# No dependency without a command using it.
+# ============================================================
+
+# ---------- Core ----------
+pydantic>=2.11.0
+python-dotenv>=1.1.0
+PyYAML>=6.0.2
+pytest>=8.4.0
+# ---------- CLI ----------
+typer>=0.16.0
+rich>=14.0.0
+
+# ---------- Data & Validation & Ingesting ----------
+owrp==0.1.0
+# ---------- Testing ----------
+pytest>=8.4.0
+
+# ---------- Hashing / Similarity ----------
+numpy>=2.3.0
+
+# ---------- Logging ----------
+structlog>=25.4.0
+
+# ---------- Optional OpenAI ----------
+openai>=1.90.0
+
+
+
+# ---- Embeddings / Semantic Dedupe ----
+ sentence-transformers>=5.0.0
+
+# ---- Vector Storage ----
+ pgvector>=0.4.1
+
+# ---- Graph Layer ----
+ neo4j>=5.28.0
+
+# ---- Event Streaming ----
+ redpanda-connect
+
+# ---- Feature Store ----
+ feast>=0.53.0
+
+# ---- Observability ----
+ opentelemetry-api>=1.35.0
+ opentelemetry-sdk>=1.35.0
+
+# ---- LLM Gateway ----
+ litellm>=1.74.0
+
+# ---- Tracing ----
+ langfuse>=3.2.0
+
+# ---- High-scale Analytics ----
+ clickhouse-connect>=0.8.18
+
+# ---- Local APIs ----
+ fastapi>=0.116.0
+ uvicorn>=0.35.0
+
+# ---- Advanced Data ----
+ pandas>=2.3.0
+
+# ---- Graph Retrieval ----
+ networkx>=3.5
+
+# ---- RAG ----
+ lightrag-hku
+
+# ---- Local Models ----
+ vllm
+
+# ============================================================
+# DO NOT ADD:
+#
+# Kubernetes
+# Redis
+# Celery
+# RabbitMQ
+# Kafka
+# Docker-specific libraries
+# Anything without a proof path
+# ============================================================

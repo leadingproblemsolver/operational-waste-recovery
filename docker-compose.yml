@@ -1,0 +1,12 @@
+# MODE: MANUAL
+# BRAAT BLOCK: Optional local storage shell
+# MISSION: Keep external services optional until the SQLite proof path is exhausted.
+# NOTE: The executable proof path does not require Docker.
+
+services:
+  owrp-shell:
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: bash -lc "pip install -e . && python -m owrp.cli validate"

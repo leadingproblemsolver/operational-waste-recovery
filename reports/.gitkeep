@@ -1,0 +1,1 @@
+python -m owrp.cli ingest --file data/sample_events.jsonl

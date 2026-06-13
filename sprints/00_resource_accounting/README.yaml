@@ -1,0 +1,90 @@
+# MODE: MANUAL
+# BRAAT BLOCK: Resource Accounting Model
+# PURPOSE:
+#   Define what counts as waste before building detection logic.
+#   Do not add dashboards, integrations, or external services here.
+
+waste_types:
+  duplicated_prompt:
+    description: "Same or near-same prompt intent repeated with similar context."
+    measured_by:
+      - prompt_hash
+      - semantic_hash
+      - context_hash
+    recovery_metrics:
+      - recovered_token_cost
+      - recovered_engineer_minutes
+
+  duplicated_debugging:
+    description: "Repeated debugging of the same error, stack trace, or failure pattern."
+    measured_by:
+      - error_signature
+      - files_touched
+      - repo_id
+    recovery_metrics:
+      - recovered_engineer_minutes
+      - avoided_llm_calls
+
+  duplicated_context_reconstruction:
+    description: "Same repo, files, architecture, or incident context repeatedly loaded into LLM context."
+    measured_by:
+      - context_hash
+      - files_read
+      - tokens_spent
+    recovery_metrics:
+      - avoidable_context_tokens
+      - recovered_token_cost
+
+  duplicated_root_cause_search:
+    description: "Repeated investigation of a previously solved incident or failure."
+    measured_by:
+      - incident_signature
+      - service_name
+      - dependency_name
+    recovery_metrics:
+      - recovered_investigation_minutes
+
+resource_dimensions:
+  llm_tokens:
+    unit: "tokens"
+    source: "interaction event token counts"
+
+  llm_cost:
+    unit: "USD"
+    source: "model pricing multiplied by token usage"
+
+  engineer_minutes:
+    unit: "minutes"
+    source: "estimated from repeated context loading or repeated investigation"
+
+  incident_time:
+    unit: "minutes"
+    source: "MTTR comparison once incident module is active"
+
+recovery_formulas:
+  recovered_token_cost:
+    formula: "avoidable_tokens * average_cost_per_token"
+
+  recovered_engineer_time:
+    formula: "avoidable_context_reconstruction_minutes + avoided_debugging_minutes"
+
+  recovered_investigation_time:
+    formula: "predicted_mttr_without_retrieval - actual_mttr_with_retrieval"
+
+proof:
+  required_file: "configs/waste-taxonomy.yaml"
+  required_cli_path:
+    - "ingest"
+    - "status"
+    - "validate"
+    - "query"
+  inspectable_outputs:
+    - "data/owrp.sqlite"
+    - "logs/owrp.log"
+    - "reports/weekly_recovery.json"
+
+forbidden:
+  - "Do not add dashboard logic here."
+  - "Do not add external integrations here."
+  - "Do not create unused abstractions."
+  - "Do not reference paths or functions that do not exist."

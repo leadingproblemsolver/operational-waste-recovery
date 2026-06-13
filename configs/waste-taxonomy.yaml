@@ -1,0 +1,324 @@
+# MODE: HYBRID
+# BRAAT BLOCK: Waste taxonomy
+# MISSION: Define measurable resource waste before product features.
+# MANUAL EDITING: Not required for local proof path.
+
+waste_types:
+  duplicated_prompt:
+    definition: "Same intent and materially same context repeated across LLM calls."
+    measurable_fields:
+      - prompt_hash
+      - semantic_hash
+      - context_hash
+      - tokens_spent
+      - cost_usd
+    recovery_metric: recovered_token_cost
+
+  duplicated_debugging:
+    definition: "Same error or failure path investigated repeatedly."
+    measurable_fields:
+      - prompt
+      - files_read
+      - files_modified
+      - incident_id
+    recovery_metric: recovered_engineer_time
+
+  duplicated_context_reconstruction:
+    definition: "Same repo, architecture, files, or service context repeatedly loaded into prompts."
+    measurable_fields:
+      - context_hash
+      - files_read
+      - tokens_spent
+      - cost_usd
+    recovery_metric: recovered_context_tokens
+
+  duplicated_root_cause_search:
+    definition: "Same incident root-cause path repeated after historical evidence already exists."
+    measurable_fields:
+      - incident_id
+      - service
+      - node_type
+      - text
+      - confidence
+    recovery_metric: recovered_investigation_time
+
+resource_dimensions:
+  llm_tokens:
+    unit: tokens
+    source: llm_interactions.tokens_spent
+  llm_cost:
+    unit: usd
+    source: llm_interactions.cost_usd
+  engineer_minutes:
+    unit: minutes
+    source: recovery_ledger
+  incident_mttr:
+    unit: minutes
+    source: incident_events + incident_edges
+
+primary_kpis:
+  recovered_credits_per_engineer_per_week:
+    implemented_as: "recovery_ledger rows grouped by user_id once identity mapping is ingested"
+  recovered_hours_per_engineer_per_week:
+    implemented_as: "recovered_engineer_time metric in recovery_ledger"
+
+
+
+
+# ------------
+
+
+
+# ============================================================
+# MODE: MANUAL
+# BRAAT BLOCK: Resource Accounting Model
+# FILE: configs/waste-taxonomy.yaml
+# ============================================================
+#
+# MISSION:
+#   Define what counts as operational waste before building
+#   detection, recovery, reporting, or integrations.
+#
+# WHY THIS FILE EXISTS:
+#   This is the accounting foundation.
+#   If waste is not defined here, the system is not allowed
+#   to claim it recovered anything.
+#
+# NON-NEGOTIABLE:
+#   Do not add dashboards.
+#   Do not add external integrations.
+#   Do not add unused abstractions.
+#   Do not reference paths/functions that do not exist.
+#
+# PROOF REQUIRED:
+#   CLI must be able to load this file during:
+#
+#     ingest -> status -> validate -> query
+#
+# INSPECTABLE OUTPUTS:
+#   data/owrp.sqlite
+#   logs/owrp.log
+#   reports/weekly_recovery.json
+#
+# ============================================================
+
+version: 1
+
+block:
+  name: resource_accounting_model
+  mode: MANUAL
+  mission: define_waste_taxonomy_and_resource_dimensions
+  active_thread: llm_credit_recovery_engine
+
+# ============================================================
+# WASTE TYPES
+# ============================================================
+#
+# Each waste type must answer:
+#   1. What is being wasted?
+#   2. How do we detect it?
+#   3. What resource can be recovered?
+#
+# If a waste type cannot map to a recovery metric,
+# it should not exist in this file.
+# ============================================================
+
+  waste_types:
+
+  duplicated_prompt:
+    description: >
+      Same or near-same prompt intent repeated with similar context,
+      causing duplicated LLM token spend.
+    detection_inputs:
+      - prompt_hash
+      - semantic_hash
+      - context_hash
+      - repo_id
+      - user_id
+    recovery_metrics:
+      - recovered_token_cost
+      - avoided_llm_calls
+    proof_signal:
+      - same intent appears more than once
+      - same context appears more than once
+
+  duplicated_debugging:
+    description: >
+      Same error, stack trace, failure pattern, or bug investigation
+      repeated across one or more sessions.
+    detection_inputs:
+      - error_signature
+      - files_touched
+      - repo_id
+      - conversation_hash
+    recovery_metrics:
+      - recovered_engineer_minutes
+      - avoided_debugging_minutes
+    proof_signal:
+      - repeated error investigation
+      - repeated files touched
+      - repeated fix attempt
+
+  duplicated_context_reconstruction:
+    description: >
+      Same repository, architecture, files, folders, or service context
+      repeatedly loaded into LLM context.
+    detection_inputs:
+      - context_hash
+      - files_read
+      - files_modified
+      - tokens_spent
+    recovery_metrics:
+      - avoidable_context_tokens
+      - recovered_token_cost
+      - recovered_engineer_minutes
+    proof_signal:
+      - same files repeatedly loaded
+      - same repo explanation repeated
+      - same architecture context reconstructed
+
+  duplicated_root_cause_search:
+    description: >
+      Same or similar incident investigation repeated after the
+      organization had already discovered a useful path or fix.
+    detection_inputs:
+      - incident_signature
+      - service_name
+      - dependency_name
+      - error_signature
+    recovery_metrics:
+      - recovered_investigation_minutes
+      - recovered_engineer_minutes
+    proof_signal:
+      - similar incident already exists
+      - same failed hypothesis repeated
+      - known fix rediscovered
+
+# ============================================================
+# RESOURCE DIMENSIONS
+# ============================================================
+#
+# These are the scarce resources the system is allowed to claim
+# it recovered.
+#
+# No vague claims like:
+#   - better AI usage
+#   - smarter workflows
+#   - improved productivity
+#
+# Only measurable resources.
+# ============================================================
+
+
+  resource_dimensions:
+
+  llm_tokens:
+    unit: tokens
+    measured_from:
+      - prompt_tokens
+      - completion_tokens
+      - total_tokens
+
+  llm_cost:
+    unit: usd
+    measured_from:
+      - model_name
+      - token_count
+      - cost_per_token
+
+  engineer_minutes:
+    unit: minutes
+    measured_from:
+      - repeated_context_loads
+      - repeated_debugging_events
+      - avoided_steps
+
+  incident_time:
+    unit: minutes
+    measured_from:
+      - mttr
+      - predicted_mttr
+      - similar_incident_retrieval
+
+# ============================================================
+# RECOVERY FORMULAS
+# ============================================================
+#
+# These formulas are intentionally simple.
+# Functionality matters more than sophistication.
+#
+# The first version must be inspectable and reproducible.
+# ============================================================
+
+recovery_formulas:
+
+  recovered_token_cost:
+    formula: avoidable_tokens * average_cost_per_token
+    required_inputs:
+      - avoidable_tokens
+      - average_cost_per_token
+
+  avoided_llm_calls:
+    formula: duplicated_calls
+    required_inputs:
+      - duplicated_calls
+
+  recovered_engineer_minutes:
+    formula: avoided_context_reconstruction_minutes + avoided_debugging_minutes
+    required_inputs:
+      - avoided_context_reconstruction_minutes
+      - avoided_debugging_minutes
+
+  recovered_investigation_minutes:
+    formula: predicted_mttr_without_retrieval - actual_mttr_with_retrieval
+    required_inputs:
+      - predicted_mttr_without_retrieval
+      - actual_mttr_with_retrieval
+
+# ============================================================
+# LOCAL PROOF PATH
+# ============================================================
+#
+# This sprint is only successful if the local CLI can prove
+# the taxonomy is being used.
+# ============================================================
+
+proof_path:
+
+  required_commands:
+    - ingest
+    - status
+    - validate
+    - query
+
+  required_outputs:
+    - data/owrp.sqlite
+    - logs/owrp.log
+    - reports/weekly_recovery.json
+
+  minimum_valid_proof:
+    - taxonomy_file_loads_successfully
+    - at_least_one_waste_type_detected
+    - recovery_metric_reported
+    - output_inspectable_locally
+
+# ============================================================
+# FORBIDDEN DURING THIS BLOCK
+# ============================================================
+
+forbidden:
+  - dashboard
+  - SaaS_auth
+  - billing
+  - Kubernetes
+  - Neo4j
+  - ClickHouse
+  - Slack_integration
+  - PagerDuty_integration
+  - Jira_integration
+  - VSCode_extension
+  - browser_extension
+  - unused_abstractions
+  - fake_paths
+  - fake_functions
+  - architecture_that_does_not_exist
