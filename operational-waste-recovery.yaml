@@ -1,0 +1,33 @@
+repo:
+  name: operational-waste-recovery
+  account: shawrmam8
+  visibility: public
+  classification: foundational
+  status: active
+  canonical: true
+  canonical_ref: null
+  fork_of: null
+
+description:
+  one_liner: "Local-first ledger: ingests JSONL LLM events, detects duplicate/context waste, quantifies recoverable cost."
+  problem: "Nobody can see how much token/engineer-time is wasted by redundant LLM context re-sends."
+  proof: "Installable Python package, layered architecture. Strongest-verified artifact in the portfolio per 2026-07-12 audit."
+
+signals:
+  primary: "packaging + architecture discipline (installable, layered, portable)"
+  secondary: ["JSONL/SQLite pipeline design", "cost quantification logic"]
+  audience: employer
+
+evidence:
+  level: 2
+  verified: ["pip-installable", "layered architecture confirmed by direct code audit"]
+  unverified: ["accuracy of recoverable-cost calculation against real bill data"]
+  missing: ["one real customer JSONL export run through it"]
+
+links:
+  live_demo: null
+  ci_badge: null
+  license: "MIT"
+
+topics: ["python", "llm-ops", "cost-optimization", "cli", "packaging"]
+last_synced: "2026-07-17"
