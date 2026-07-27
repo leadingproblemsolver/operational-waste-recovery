@@ -1,0 +1,1 @@
+{"request_id":"generic-001","occurred_at":"2026-06-12T10:00:00Z","actor":"eng-1","project":"payments-api","input":"Debug a Redis timeout","output":"Inspect stale connections","input_tokens":100,"output_tokens":50,"price":0.0015}

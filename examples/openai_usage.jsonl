@@ -1,0 +1,1 @@
+{"id":"provider-001","timestamp":"2026-06-12T10:00:00Z","user_id":"eng-1","repo_id":"payments-api","model":"example-model","request":{"input":"Debug Redis timeout after deployment"},"response":{"output_text":"Inspect connection-pool reset behavior"},"usage":{"input_tokens":100,"output_tokens":50,"total_tokens":150},"cost_usd":0.0015,"classification":"debugging"}
