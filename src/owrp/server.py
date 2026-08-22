@@ -5,8 +5,9 @@ import os
 import hmac
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
+from owrp.findings import get_finding
 from owrp.storage.sqlite_store import SQLiteStore
 
 
@@ -78,6 +79,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, {"hits": [hit.to_dict() for hit in store.query(query, limit)]})
             if parsed.path == "/api/capsules":
                 return self.send_json(200, {"capsules": store.capsules()})
+            if parsed.path.startswith("/api/findings/"):
+                pair_id = unquote(parsed.path.removeprefix("/api/findings/")).strip()
+                if not pair_id or len(pair_id) > 200 or "/" in pair_id:
+                    return self.send_json(400, {"error": "invalid_finding_id"})
+                finding = get_finding(store, pair_id)
+                if finding is None:
+                    return self.send_json(404, {"error": "finding_not_found"})
+                return self.send_json(200, finding)
             return self.send_json(404, {"error": "not_found"})
         finally:
             store.close()
