@@ -63,7 +63,8 @@ async function expectKind(promise: Promise<unknown>, kind: OWRPError['kind']) {
 
 describe('getReview', () => {
   it('returns a validated persisted review on the happy path', async () => {
-    const fetcher = vi.fn(async () => jsonResponse(observedReview)) as unknown as typeof fetch
+    const fetchMock = vi.fn(async () => jsonResponse(observedReview))
+    const fetcher = fetchMock as unknown as typeof fetch
 
     const review = await getReview(auditId, {
       baseUrl: 'https://owr.example.test',
@@ -74,11 +75,11 @@ describe('getReview', () => {
     expect(review.audit_id).toBe(auditId)
     expect(review.measurement_state).toBe('OBSERVED')
     expect(review.evidence.avoidable_tokens).toBe(120)
-    expect(fetcher).toHaveBeenCalledWith(
+    expect(fetchMock).toHaveBeenCalledWith(
       `https://owr.example.test/api/review/${auditId}`,
       expect.objectContaining({ method: 'GET', cache: 'no-store' })
     )
-    const request = fetcher.mock.calls[0][1]
+    const request = fetchMock.mock.calls[0][1]
     expect((request?.headers as Headers).get('Authorization')).toBe('Bearer secret')
   })
 
