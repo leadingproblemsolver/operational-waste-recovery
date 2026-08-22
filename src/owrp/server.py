@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from owrp.review import build_review
 from owrp.storage.sqlite_store import SQLiteStore
 
 
@@ -78,6 +79,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, {"hits": [hit.to_dict() for hit in store.query(query, limit)]})
             if parsed.path == "/api/capsules":
                 return self.send_json(200, {"capsules": store.capsules()})
+            if parsed.path.startswith("/api/review/"):
+                pair_id = parsed.path.removeprefix("/api/review/")
+                review = build_review(store, pair_id)
+                if review is None:
+                    return self.send_json(404, {"error": "review_not_found"})
+                return self.send_json(200, review)
             return self.send_json(404, {"error": "not_found"})
         finally:
             store.close()
