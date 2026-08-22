@@ -1,0 +1,1 @@
+{"event_id":"eval-existing","timestamp":"2026-08-22T18:00:00+00:00","user_id":"eval-user","repo_id":"eval-repo","source":"eval","model_name":"eval-model","prompt":"before","response":"seed response","prompt_tokens":2,"completion_tokens":2,"total_tokens":4,"cost_usd":0.01,"classification":"unclassified","files_read":[],"files_modified":[],"metadata":{"fixture":"seed"}}
