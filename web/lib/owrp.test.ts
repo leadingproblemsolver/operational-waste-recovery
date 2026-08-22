@@ -63,7 +63,9 @@ async function expectKind(promise: Promise<unknown>, kind: OWRPError['kind']) {
 
 describe('getReview', () => {
   it('returns a validated persisted review on the happy path', async () => {
-    const fetchMock = vi.fn(async () => jsonResponse(observedReview))
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) => jsonResponse(observedReview)
+    )
     const fetcher = fetchMock as unknown as typeof fetch
 
     const review = await getReview(auditId, {
