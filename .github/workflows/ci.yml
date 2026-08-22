@@ -11,3 +11,9 @@ jobs:
       - run: python -m pytest -q
       - run: python -m pip wheel . --no-deps --wheel-dir dist
       - run: PYTHONPATH=src python -m owrp.cli --root . validate
+      - uses: actions/setup-node@v4
+        with: { node-version: '24' }
+      - run: npm install --prefix web
+      - run: npm --prefix web run type-check
+      - run: npm --prefix web test
+      - run: npm --prefix web run build
