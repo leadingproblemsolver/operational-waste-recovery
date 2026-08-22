@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getFinding, OwrpApiError, type Finding } from './owrp'
+import { getFinding, type Finding } from './owrp'
 
 function finding(overrides: Partial<Finding> = {}): Finding {
   const base: Finding = {
@@ -87,7 +87,7 @@ describe('getFinding', () => {
         baseUrl: 'http://owrp.test',
         fetcher: jsonFetch({ error: 'finding_not_found' }, 404),
       })
-    ).rejects.toMatchObject<OwrpApiError>({
+    ).rejects.toMatchObject({
       status: 404,
       code: 'finding_not_found',
     })
@@ -99,7 +99,7 @@ describe('getFinding', () => {
         baseUrl: 'http://owrp.test',
         fetcher: jsonFetch({ finding_id: 'pair-1', observed: {} }),
       })
-    ).rejects.toMatchObject<OwrpApiError>({
+    ).rejects.toMatchObject({
       status: 502,
       code: 'malformed_response',
     })
@@ -111,7 +111,7 @@ describe('getFinding', () => {
         baseUrl: 'http://owrp.test',
         fetcher: jsonFetch({ error: 'unauthorized' }, 401),
       })
-    ).rejects.toMatchObject<OwrpApiError>({
+    ).rejects.toMatchObject({
       status: 401,
       code: 'unauthorized',
     })
