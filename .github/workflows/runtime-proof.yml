@@ -1,0 +1,24 @@
+name: runtime-proof
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  runtime-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.13' }
+      - name: Run isolated Docker runtime proof
+        run: |
+          mkdir -p artifacts
+          python scripts/runtime_proof.py | tee artifacts/runtime-proof.json
+      - name: Upload runtime receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: owrp-runtime-proof-${{ github.sha }}
+          path: artifacts/runtime-proof.json
+          if-no-files-found: error
