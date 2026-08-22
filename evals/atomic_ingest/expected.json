@@ -1,0 +1,22 @@
+{
+  "reference_candidate": {
+    "expected_passed": true,
+    "expected_score": "3/3"
+  },
+  "known_bad_mutant": {
+    "expected_passed": false,
+    "expected_score": "2/3",
+    "expected_failed_cases": [
+      "mixed_strict_atomic"
+    ]
+  },
+  "claim_boundary": {
+    "proves": "The grader distinguishes strict batch atomicity from implementations that otherwise preserve happy-path and non-strict behavior.",
+    "does_not_prove": [
+      "real-world model performance",
+      "customer usefulness",
+      "human-independent implementation ownership",
+      "general software-engineering ability"
+    ]
+  }
+}
