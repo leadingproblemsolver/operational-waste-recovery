@@ -1,5 +1,6 @@
 name: ci
 on: [push, pull_request]
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -11,3 +12,121 @@ jobs:
       - run: python -m pytest -q
       - run: python -m pip wheel . --no-deps --wheel-dir dist
       - run: PYTHONPATH=src python -m owrp.cli --root . validate
+
+  docker-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build production image
+        run: docker build --tag owrp:ci .
+
+      - name: Start token-gated service
+        run: |
+          docker run -d --name owrp-ci \
+            -e OWRP_API_TOKEN=ci-token \
+            -p 8787:8787 \
+            owrp:ci
+
+      - name: Wait for liveness
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8787/health/live > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs owrp-ci
+          exit 1
+
+      - name: Exercise ingest, analysis, report, idempotency, and auth
+        run: |
+          mkdir -p runtime-proof
+
+          docker exec owrp-ci \
+            owrp --root /app ingest --input /app/data/sample_events.jsonl \
+            > runtime-proof/ingest-first.json
+
+          docker exec owrp-ci \
+            owrp --root /app ingest --input /app/data/sample_events.jsonl \
+            > runtime-proof/ingest-replay.json
+
+          docker exec owrp-ci owrp --root /app status \
+            > runtime-proof/status-before-restart.json
+
+          docker exec owrp-ci owrp --root /app report \
+            > runtime-proof/report.json
+
+          unauthorized_status=$(curl --silent \
+            --output runtime-proof/unauthorized.json \
+            --write-out '%{http_code}' \
+            http://127.0.0.1:8787/api/status)
+          test "$unauthorized_status" = "401"
+
+          curl --fail --silent \
+            -H 'Authorization: Bearer ci-token' \
+            http://127.0.0.1:8787/api/status \
+            > runtime-proof/api-status-before-restart.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          proof = Path('runtime-proof')
+          first = json.loads((proof / 'ingest-first.json').read_text())
+          replay = json.loads((proof / 'ingest-replay.json').read_text())
+          status = json.loads((proof / 'status-before-restart.json').read_text())
+          api_status = json.loads((proof / 'api-status-before-restart.json').read_text())
+          unauthorized = json.loads((proof / 'unauthorized.json').read_text())
+
+          assert first['counts']['lines'] == 3
+          assert first['counts']['rejected'] == 0
+          assert replay['counts']['rejected'] == 0
+          assert status['interactions'] == 3, status
+          assert status['duplicate_pairs'] >= 1, status
+          assert status['context_capsules'] >= 1, status
+          assert api_status['interactions'] == 3, api_status
+          assert unauthorized == {'error': 'unauthorized'}, unauthorized
+          PY
+
+      - name: Restart same container and verify durable state
+        run: |
+          docker restart owrp-ci > /dev/null
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8787/health/live > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl --fail --silent \
+            -H 'Authorization: Bearer ci-token' \
+            http://127.0.0.1:8787/health/ready \
+            > runtime-proof/ready-after-restart.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          state = json.loads(Path('runtime-proof/ready-after-restart.json').read_text())
+          assert state['status'] == 'ok', state
+          assert state['interactions'] == 3, state
+          assert state['duplicate_pairs'] >= 1, state
+          assert state['context_capsules'] >= 1, state
+          PY
+
+      - name: Preserve runtime logs
+        if: always()
+        run: |
+          mkdir -p runtime-proof
+          docker logs owrp-ci > runtime-proof/container.log 2>&1 || true
+
+      - name: Upload runtime proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-runtime-proof
+          path: runtime-proof/
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f owrp-ci >/dev/null 2>&1 || true
