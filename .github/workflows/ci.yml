@@ -11,3 +11,20 @@ jobs:
       - run: python -m pytest -q
       - run: python -m pip wheel . --no-deps --wheel-dir dist
       - run: PYTHONPATH=src python -m owrp.cli --root . validate
+
+  web-validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package.json
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build
