@@ -1,0 +1,46 @@
+name: agents-for-humans-recovery-agent
+on:
+  pull_request:
+    paths:
+      - 'hackathons/agents-for-humans/recovery-agent/**'
+      - '.github/workflows/agents-for-humans.yml'
+  workflow_dispatch:
+
+jobs:
+  recovery-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install hackathon project
+        working-directory: hackathons/agents-for-humans/recovery-agent
+        run: python -m pip install -e '.[dev]'
+      - name: Run deterministic + Strands contract tests
+        working-directory: hackathons/agents-for-humans/recovery-agent
+        run: python -m pytest -q
+      - name: Import CLI and Strands orchestration
+        working-directory: hackathons/agents-for-humans/recovery-agent
+        run: |
+          python - <<'PY'
+          from recovery_agent.cli import build_parser
+          from recovery_agent.strands_app import build_agent, SYSTEM_PROMPT
+          assert build_parser().prog
+          assert callable(build_agent)
+          assert 'Human approval is authoritative' in SYSTEM_PROMPT
+          print('recovery-agent-import-smoke: PASS')
+          PY
+      - name: Run judge scenarios
+        working-directory: hackathons/agents-for-humans/recovery-agent
+        run: |
+          mkdir -p proof
+          python -m recovery_agent.judge_runs --output proof/judge-scenarios.json
+      - name: Upload judge receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-agent-judge-receipt-${{ github.sha }}
+          path: hackathons/agents-for-humans/recovery-agent/proof/judge-scenarios.json
+          if-no-files-found: error
