@@ -72,17 +72,18 @@ pytest -q
 For Google AI Studio development:
 
 ```bash
-export GOOGLE_GENAI_USE_ENTERPRISE=FALSE
+export GOOGLE_GENAI_USE_VERTEXAI=FALSE
 export GOOGLE_API_KEY='...'
 adk web .
 ```
 
-For Google Cloud / Agent Platform:
+For Google Cloud / Vertex AI:
 
 ```bash
-export GOOGLE_GENAI_USE_ENTERPRISE=TRUE
+export GOOGLE_GENAI_USE_VERTEXAI=TRUE
 export GOOGLE_CLOUD_PROJECT='your-project-id'
-export GOOGLE_CLOUD_LOCATION='me-central1'
+export GOOGLE_CLOUD_LOCATION='global'
+gcloud auth application-default login
 adk web .
 ```
 
@@ -100,11 +101,14 @@ Deploy:
 
 ```bash
 export GOOGLE_CLOUD_PROJECT='your-project-id'
-export GOOGLE_CLOUD_LOCATION='me-central1' # Doha; change if needed
+export CLOUD_RUN_REGION='me-central1'
+export GOOGLE_CLOUD_LOCATION='global'
 bash scripts/deploy_cloud_run.sh
 ```
 
-The script enables Cloud Run, Cloud Build, Artifact Registry and Vertex AI/Agent Platform dependencies, deploys from source, sets the production model environment, and prints the resulting Cloud Run URL.
+Cloud Run placement and Gemini model endpoint are intentionally separate: the container may run in `me-central1`, while Gemini 3.5 Flash uses Google's supported `global` endpoint by default.
+
+The script enables Cloud Run, Cloud Build, Artifact Registry and Vertex AI dependencies, deploys from source, sets `GOOGLE_GENAI_USE_VERTEXAI=TRUE`, and prints the resulting Cloud Run URL.
 
 After deployment, collect these irreversible receipts:
 
