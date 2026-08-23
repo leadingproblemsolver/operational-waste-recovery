@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+from itertools import combinations
 import json
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+
+from owrp.core.hashing import similarity
 
 
 VALID_PAIR_LABELS = frozenset(
@@ -156,6 +159,85 @@ def _sessions(labels: Iterable[PairLabel]) -> set[str]:
         result.add(label.left_session_id)
         result.add(label.right_session_id)
     return result
+
+
+def build_pair_label_queue(
+    store: Any,
+    *,
+    session_metadata_key: str = "session_id",
+    prompt_excerpt_chars: int = 320,
+) -> list[dict[str, Any]]:
+    """Build the complete human-label queue over the detector's same-repo scope.
+
+    The detector compares every pair of interactions in the same repo, including
+    cross-session pairs. The labeling queue therefore does the same rather than
+    sampling convenient pairs. Every event must carry an explicit session id in
+    metadata; missing session provenance is a hard error rather than an inferred
+    session count.
+    """
+
+    key = session_metadata_key.strip()
+    if not key:
+        raise ValueError("session_metadata_key is required")
+    if prompt_excerpt_chars < 40:
+        raise ValueError("prompt_excerpt_chars must be at least 40")
+
+    rows = store.conn.execute(
+        """
+        SELECT event_id, timestamp, repo_id, prompt, metadata_json
+        FROM interactions
+        ORDER BY timestamp, event_id
+        """
+    ).fetchall()
+    events: list[dict[str, str]] = []
+    for row in rows:
+        metadata = json.loads(row["metadata_json"] or "{}")
+        if not isinstance(metadata, dict):
+            raise ValueError(f"event {row['event_id']} metadata must be an object")
+        session_id = str(metadata.get(key) or "").strip()
+        if not session_id:
+            raise ValueError(
+                f"event {row['event_id']} is missing metadata.{key}; "
+                "session provenance must be supplied by the provider adapter"
+            )
+        events.append(
+            {
+                "event_id": str(row["event_id"]),
+                "timestamp": str(row["timestamp"]),
+                "repo_id": str(row["repo_id"]),
+                "prompt": str(row["prompt"]),
+                "session_id": session_id,
+            }
+        )
+
+    grouped: dict[str, list[dict[str, str]]] = {}
+    for event in events:
+        grouped.setdefault(event["repo_id"], []).append(event)
+
+    queue: list[dict[str, Any]] = []
+    for repo_id in sorted(grouped):
+        for first, second in combinations(grouped[repo_id], 2):
+            if first["event_id"] <= second["event_id"]:
+                left, right = first, second
+            else:
+                left, right = second, first
+            queue.append(
+                {
+                    "left_event_id": left["event_id"],
+                    "right_event_id": right["event_id"],
+                    "left_session_id": left["session_id"],
+                    "right_session_id": right["session_id"],
+                    "repo_id": repo_id,
+                    "detector_similarity": round(
+                        similarity(left["prompt"], right["prompt"]), 6
+                    ),
+                    "left_prompt_excerpt": left["prompt"][:prompt_excerpt_chars],
+                    "right_prompt_excerpt": right["prompt"][:prompt_excerpt_chars],
+                    "label": "",
+                    "evidence": "",
+                }
+            )
+    return queue
 
 
 def evaluate_duplicate_pairs(
