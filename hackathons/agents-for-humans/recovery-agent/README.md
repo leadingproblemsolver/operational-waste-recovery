@@ -39,11 +39,9 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 python -m pip install -e ".[dev]"
 ```
 
-AWS credentials/configuration are required for the default Strands model path. The deterministic core tests do not call a model.
+The hackathon package includes the Strands OpenAI provider for the explicit credentialed judge/demo path. Credential-free deterministic tests do not call a model.
 
-## Run
-
-First ingest coding-agent history with the reused OWR engine. Then run:
+## Run against existing OWR state
 
 ```bash
 recovery-agent \
@@ -63,6 +61,34 @@ Expected journey:
 7. Before `execute_approved_recovery_action`, Strands `HumanInTheLoop` prompts the human.
 8. Denial stops with zero mutation; approval writes exactly one `.recovery/recovery-<finding>.md` note.
 9. The tool returns an `EXECUTED` or replay-safe `ALREADY_EXISTS` receipt.
+
+## Credentialed live proof
+
+Set a real OpenAI credential and run a synthetic, sanitized end-to-end fixture through the actual Strands model provider and tools:
+
+```bash
+export OPENAI_API_KEY=...
+recovery-agent-live-smoke \
+  --model gpt-4o-mini \
+  --approval stdio \
+  --output proof/live-agent-receipt.json
+```
+
+`stdio` is the judge-video path: the mutating tool visibly pauses for operator approval. For an explicit non-interactive smoke branch, use `--approval yes` or `--approval deny`; the resulting receipt records that approval mode and must not be presented as an interactive human decision.
+
+A repository-level GitHub Actions workflow, `agents-for-humans-live-receipt`, exposes the same path via manual `workflow_dispatch`. Add `OPENAI_API_KEY` as a repository Actions secret, dispatch the workflow, and GitHub uploads the sanitized JSON receipt as an artifact tied to the exact commit SHA.
+
+The live receipt proves credentialed model invocation and actual Strands tool orchestration on a synthetic sanitized fixture. It does not claim real customer history or production deployment.
+
+## Deterministic judge receipt
+
+`recovery_agent.judge_runs` exercises three credential-free hostile scenarios and emits one JSON receipt:
+
+- approved bounded action + replay-safe no-overwrite
+- human-denial branch with zero mutation
+- stale persisted evidence after proposal/approval with zero mutation
+
+These scenarios prove the deterministic safety boundary independently of model variability. They do not claim LLM reasoning quality.
 
 ## Failure behavior
 
@@ -94,6 +120,7 @@ It incorporates and depends on pre-existing work as follows:
 - Strands `HumanInTheLoop` approval boundary
 - bounded repository Recovery Note action
 - replay/evidence-drift/path-containment failure handling
+- credentialed live-model receipt path
 - hackathon-specific tests, demo, architecture, and deployment work
 
 ## Evidence boundary
