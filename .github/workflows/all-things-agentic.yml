@@ -40,7 +40,7 @@ jobs:
       - name: Boot container and verify health
         run: |
           docker run -d --rm --name recovery-taskmaster-ci \
-            -e GOOGLE_GENAI_USE_ENTERPRISE=FALSE \
+            -e GOOGLE_GENAI_USE_VERTEXAI=FALSE \
             -p 127.0.0.1:8080:8080 \
             recovery-taskmaster:ci
           trap 'docker stop recovery-taskmaster-ci >/dev/null 2>&1 || true' EXIT
