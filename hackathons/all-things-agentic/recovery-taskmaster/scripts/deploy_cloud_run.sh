@@ -2,7 +2,8 @@
 set -euo pipefail
 
 : "${GOOGLE_CLOUD_PROJECT:?Set GOOGLE_CLOUD_PROJECT to the target GCP project id}"
-REGION="${GOOGLE_CLOUD_LOCATION:-me-central1}"
+RUN_REGION="${CLOUD_RUN_REGION:-me-central1}"
+MODEL_LOCATION="${GOOGLE_CLOUD_LOCATION:-global}"
 SERVICE="${RECOVERY_TASKMASTER_SERVICE:-recovery-taskmaster}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,10 +15,10 @@ gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregi
 
 gcloud run deploy "${SERVICE}" \
   --source . \
-  --region "${REGION}" \
+  --region "${RUN_REGION}" \
   --allow-unauthenticated \
-  --set-env-vars "GOOGLE_GENAI_USE_ENTERPRISE=TRUE,GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT},GOOGLE_CLOUD_LOCATION=${REGION},RECOVERY_TASKMASTER_ROOT=/tmp/recovery-taskmaster"
+  --set-env-vars "GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT},GOOGLE_CLOUD_LOCATION=${MODEL_LOCATION},RECOVERY_TASKMASTER_ROOT=/tmp/recovery-taskmaster"
 
 gcloud run services describe "${SERVICE}" \
-  --region "${REGION}" \
+  --region "${RUN_REGION}" \
   --format='value(status.url)'
