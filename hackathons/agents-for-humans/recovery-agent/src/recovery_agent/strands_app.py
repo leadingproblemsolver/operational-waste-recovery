@@ -11,6 +11,7 @@ from .core import (
     inspect_history,
     inspect_repo_state,
     load_recovery_evidence,
+    preflight_recovery,
     propose_recovery_action,
 )
 
@@ -31,6 +32,15 @@ def inspect_repository(repo_path: str) -> str:
 def get_recovery_evidence(root: str, finding_id: str) -> str:
     """Load exact OWR evidence and Recovery Capsule for one persisted finding."""
     return json.dumps(load_recovery_evidence(root, finding_id), sort_keys=True)
+
+
+@tool
+def run_recovery_preflight(root: str, repo_path: str, finding_id: str) -> str:
+    """Run deterministic readiness gates. BLOCKED results cannot be overridden by model judgment."""
+    return json.dumps(
+        preflight_recovery(root=root, repo_path=repo_path, finding_id=finding_id),
+        sort_keys=True,
+    )
 
 
 @tool
@@ -59,12 +69,13 @@ Required behavior:
 2. Inspect current repository state with inspect_repository.
 3. If there are no repeated-work findings, stop and report NO_ACTION.
 4. For one strongest finding only, load exact evidence with get_recovery_evidence.
-5. Keep OBSERVED evidence distinct from INFERRED interpretation. Similarity is not proof of wasted work or realized savings.
-6. Propose exactly one bounded action with propose_bounded_recovery_action.
-7. Never invent evidence IDs, token counts, costs, files, or completed investigations.
-8. execute_approved_recovery_action is the only side-effecting tool. Human approval is authoritative; denial means stop with no substitute mutation.
-9. After execution, report the returned action receipt. Never claim execution without that receipt.
-10. If any tool fails or evidence is missing, fail closed and explain the missing evidence or dependency.
+5. Run run_recovery_preflight. A BLOCKED result is authoritative and must terminate the action path.
+6. Keep OBSERVED evidence distinct from INFERRED interpretation. Similarity is not proof of wasted work or realized savings.
+7. Propose exactly one bounded action with propose_bounded_recovery_action only after preflight is ready.
+8. Never invent evidence IDs, token counts, costs, files, or completed investigations.
+9. execute_approved_recovery_action is the only side-effecting tool. Human approval is authoritative; denial means stop with no substitute mutation.
+10. After execution, report the returned action receipt. Never claim execution without that receipt.
+11. If any tool fails or evidence is missing, fail closed and explain the missing evidence or dependency.
 
 Do not create multiple actions, refactor the repository, edit source files, commit, push, or run arbitrary shell commands.
 """.strip()
@@ -75,6 +86,7 @@ def build_agent(*, model: Any | None = None, ask: str | Any | None = "stdio") ->
         "inspect_coding_history",
         "inspect_repository",
         "get_recovery_evidence",
+        "run_recovery_preflight",
         "propose_bounded_recovery_action",
     ]
     kwargs: dict[str, Any] = {
@@ -83,6 +95,7 @@ def build_agent(*, model: Any | None = None, ask: str | Any | None = "stdio") ->
             inspect_coding_history,
             inspect_repository,
             get_recovery_evidence,
+            run_recovery_preflight,
             propose_bounded_recovery_action,
             execute_approved_recovery_action,
         ],
