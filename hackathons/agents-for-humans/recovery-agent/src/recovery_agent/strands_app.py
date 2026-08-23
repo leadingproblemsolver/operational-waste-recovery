@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 from strands import Agent, tool
@@ -89,6 +90,20 @@ Required behavior:
 
 Do not create multiple actions, refactor the repository, edit source files, commit, push, or run arbitrary shell commands.
 """.strip()
+
+
+def build_openai_model(*, model_id: str | None = None, api_key: str | None = None) -> Any:
+    """Create the explicit live-model provider used for judge/demo runs."""
+    from strands.models.openai import OpenAIModel
+
+    resolved_key = api_key or os.environ.get("OPENAI_API_KEY")
+    if not resolved_key:
+        raise RuntimeError("OPENAI_API_KEY is required for a credentialed live run")
+    resolved_model = model_id or os.environ.get("OPENAI_MODEL_ID") or "gpt-4o-mini"
+    return OpenAIModel(
+        client_args={"api_key": resolved_key},
+        model_id=resolved_model,
+    )
 
 
 def build_agent(*, model: Any | None = None, ask: str | Any | None = "stdio") -> Agent:
