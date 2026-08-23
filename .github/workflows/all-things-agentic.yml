@@ -5,6 +5,7 @@ on:
     paths:
       - 'hackathons/all-things-agentic/recovery-taskmaster/**'
       - '.github/workflows/all-things-agentic.yml'
+      - '.github/workflows/all-things-agentic-live.yml'
   workflow_dispatch:
 
 jobs:
