@@ -93,11 +93,58 @@ Prompt the agent with:
 Complete a recovery workflow for run_id judge-demo-01. Do the work end to end and stop only at VERIFIED or an explicit blocked state.
 ```
 
+## Google Cloud bootstrap
+
+The public proof workflow deploys from source and then calls Gemini through Vertex AI. A one-time GCP bootstrap is therefore required before the GitHub Actions live receipt can succeed.
+
+Enable billing for the target project, then in Cloud Shell enable the required APIs:
+
+```bash
+PROJECT_ID='your-project-id'
+gcloud config set project "$PROJECT_ID"
+gcloud services enable \
+  run.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  aiplatform.googleapis.com \
+  logging.googleapis.com
+```
+
+The deployment principal used by GitHub must be able to deploy Cloud Run source, consume/enable services, act as the runtime service identity, call Vertex AI, and read the proof logs. Google documents the core source-deploy roles as Cloud Run Source Developer + Service Usage Consumer + Service Account User; this receipt workflow also enables APIs and reads logs, so the bootstrap identity must have the corresponding administration/view permissions.
+
+The runtime service identity must have Vertex AI User:
+
+```text
+roles/aiplatform.user
+```
+
+Cloud Run source builds also require the build service account to have Cloud Run Builder. For the default Compute Engine build identity:
+
+```bash
+PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
+BUILD_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${BUILD_SA}" \
+  --role='roles/run.builder'
+```
+
+For the fastest hackathon path, use a dedicated short-lived deploy/runtime service account with only the roles necessary for this project, store its JSON credential only as the GitHub Actions repository secret `GCP_CREDENTIALS`, and delete/disable the key after submission. Do **not** commit the JSON file or paste it into issues, PRs, logs, or submission text.
+
+The manual workflow `all-things-agentic-live-receipt` accepts the Google Cloud project ID as an input. Its defaults are:
+
+```text
+Cloud Run region: me-central1
+Gemini / Vertex endpoint: global
+service: recovery-taskmaster
+run_id: judge-demo-01
+```
+
 ## Cloud Run
 
 The service uses ADK's supported `get_fast_api_app()` shape in `main.py` and exposes the standard ADK web/API surface plus `/healthz`.
 
-Deploy:
+Deploy directly from a prepared local Google Cloud environment:
 
 ```bash
 export GOOGLE_CLOUD_PROJECT='your-project-id'
@@ -113,10 +160,10 @@ The script enables Cloud Run, Cloud Build, Artifact Registry and Vertex AI depen
 After deployment, collect these irreversible receipts:
 
 ```text
-Cloud Run service URL
+Cloud Run service URL + exact revision
 GET /healthz → 200
 live Gemini/ADK run → VERIFIED
-Cloud Run / Cloud Trace execution evidence
+Cloud Run execution/log evidence
 ≤4 minute public demo video
 Devpost submitted receipt
 ```
@@ -156,4 +203,4 @@ Reality Handoff and Agent Reliability Preflight informed the design principle th
 
 ## Claim boundary
 
-A successful demo can prove that Gemini through Google ADK completed the bounded workflow on Google Cloud, created the recovery artifact, and independently verified its receipt. It does **not** prove customer adoption, realized financial savings, production scale, or hackathon placement.
+The public judge fixture is explicitly synthetic and sanitized. A successful hosted demo can prove that Gemini through Google ADK completed the bounded workflow on Google Cloud, created the recovery artifact, and independently verified its receipt. It does **not** prove customer adoption, real-user corpus performance, realized financial savings, production scale, or hackathon placement.
