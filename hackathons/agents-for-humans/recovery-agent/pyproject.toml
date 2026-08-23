@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recovery-agent-strands"
+version = "0.1.0"
+description = "Strands-orchestrated Recovery Agent that detects reconstructed coding-agent work and gates one evidence-backed next action."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Leading Problem Solver"}]
+dependencies = [
+  "strands-agents>=1.0.0",
+  "operational-waste-recovery @ git+https://github.com/leadingproblemsolver/operational-waste-recovery.git@e1c8bc8f3d9d57b87ba8adce62fe7f8ea78bc6a7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+recovery-agent = "recovery_agent.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
