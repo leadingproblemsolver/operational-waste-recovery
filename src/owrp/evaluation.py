@@ -27,25 +27,54 @@ def pair_key(left_event_id: str, right_event_id: str) -> tuple[str, str]:
 class PairLabel:
     left_event_id: str
     right_event_id: str
-    session_id: str
+    left_session_id: str
+    right_session_id: str
     label: str
     evidence: str
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "PairLabel":
-        left, right = pair_key(raw.get("left_event_id", ""), raw.get("right_event_id", ""))
-        session_id = str(raw.get("session_id") or "").strip()
+        raw_left = str(raw.get("left_event_id") or "").strip()
+        raw_right = str(raw.get("right_event_id") or "").strip()
+        if not raw_left or not raw_right:
+            raise ValueError("pair labels require both event ids")
+        if raw_left == raw_right:
+            raise ValueError("pair labels must reference two distinct events")
+
+        shared_session = str(raw.get("session_id") or "").strip()
+        left_session = str(raw.get("left_session_id") or shared_session).strip()
+        right_session = str(raw.get("right_session_id") or shared_session).strip()
+        if not left_session or not right_session:
+            raise ValueError(
+                "pair labels require left_session_id and right_session_id "
+                "(or session_id when both events are in one session)"
+            )
+
         label = str(raw.get("label") or "").strip().lower()
         evidence = str(raw.get("evidence") or raw.get("rationale") or "").strip()
-        if not session_id:
-            raise ValueError("pair labels require session_id")
         if label not in VALID_PAIR_LABELS:
             raise ValueError(
                 f"unsupported pair label {label!r}; expected one of {sorted(VALID_PAIR_LABELS)}"
             )
         if not evidence:
             raise ValueError("pair labels require human-inspectable evidence/rationale")
-        return cls(left, right, session_id, label, evidence)
+
+        # Pair keys are order-insensitive, but event/session provenance must stay aligned.
+        if raw_left <= raw_right:
+            left, right = raw_left, raw_right
+            left_session_id, right_session_id = left_session, right_session
+        else:
+            left, right = raw_right, raw_left
+            left_session_id, right_session_id = right_session, left_session
+
+        return cls(
+            left,
+            right,
+            left_session_id,
+            right_session_id,
+            label,
+            evidence,
+        )
 
     @property
     def key(self) -> tuple[str, str]:
@@ -59,11 +88,16 @@ class PairLabel:
     def is_positive(self) -> bool:
         return self.label == "repeated_work"
 
+    @property
+    def crosses_sessions(self) -> bool:
+        return self.left_session_id != self.right_session_id
+
     def to_dict(self) -> dict[str, str]:
         return {
             "left_event_id": self.left_event_id,
             "right_event_id": self.right_event_id,
-            "session_id": self.session_id,
+            "left_session_id": self.left_session_id,
+            "right_session_id": self.right_session_id,
             "label": self.label,
             "evidence": self.evidence,
         }
@@ -83,8 +117,7 @@ def load_pair_labels(path: Path) -> list[PairLabel]:
                 label = PairLabel.from_mapping(raw)
             except Exception as error:
                 raise ValueError(f"label line {line_number}: {error}") from error
-            previous = seen.get(label.key)
-            if previous is not None:
+            if label.key in seen:
                 raise ValueError(
                     f"duplicate pair label for {label.key[0]} / {label.key[1]}"
                 )
@@ -117,19 +150,27 @@ def _f1(precision: float | None, recall: float | None) -> float | None:
     return round(2 * precision * recall / (precision + recall), 6)
 
 
+def _sessions(labels: Iterable[PairLabel]) -> set[str]:
+    result: set[str] = set()
+    for label in labels:
+        result.add(label.left_session_id)
+        result.add(label.right_session_id)
+    return result
+
+
 def evaluate_duplicate_pairs(
     store: Any,
     labels: Iterable[PairLabel],
     *,
     require_all_predictions_labeled: bool = True,
 ) -> dict[str, Any]:
-    """Score persisted duplicate-pair predictions against frozen human pair labels.
+    """Score persisted duplicate predictions against frozen human pair labels.
 
-    `ambiguous` labels are reported but excluded from precision/recall. This avoids
-    forcing uncertain human judgment into a fake binary ground truth.
+    `ambiguous` labels are reported but excluded from precision/recall so uncertain
+    human judgment is not coerced into fake binary ground truth.
 
-    By default, every predicted pair must have a human label. That prevents a
-    selectively labeled corpus from inflating precision by silently ignoring
+    By default, every predicted pair must have a human label. This prevents a
+    selectively labeled corpus from inflating precision by silently omitting
     inconvenient predictions.
     """
 
@@ -202,13 +243,14 @@ def evaluate_duplicate_pairs(
         for label in label_list
         for event_id in (label.left_event_id, label.right_event_id)
     }
-    sessions = {label.session_id for label in label_list}
+    sessions = _sessions(label_list)
 
     return {
         "schema_version": 1,
         "work_episodes": len(event_ids),
         "distinct_sessions": len(sessions),
         "pair_labels": len(label_list),
+        "cross_session_pairs": sum(label.crosses_sessions for label in label_list),
         "scored_pairs": len(label_list) - ambiguous,
         "ambiguous_pairs": ambiguous,
         "predicted_pairs": len(predictions),
@@ -248,7 +290,7 @@ def build_frozen_manifest(
         for label in label_list
         for event_id in (label.left_event_id, label.right_event_id)
     }
-    sessions = {label.session_id for label in label_list}
+    sessions = _sessions(label_list)
     return {
         "schema_version": 1,
         "frozen": True,
@@ -258,6 +300,7 @@ def build_frozen_manifest(
         "work_episodes": len(event_ids),
         "distinct_sessions": len(sessions),
         "pair_labels": len(label_list),
+        "cross_session_pairs": sum(label.crosses_sessions for label in label_list),
     }
 
 
@@ -274,7 +317,20 @@ def validate_release_floor(
     expected_hash = canonical_labels_sha256(label_list)
     if manifest.get("labels_sha256") != expected_hash:
         raise ValueError("label hash does not match frozen manifest")
-    if int(manifest.get("work_episodes") or 0) < minimum_episodes:
+
+    actual_episode_count = len(
+        {
+            event_id
+            for label in label_list
+            for event_id in (label.left_event_id, label.right_event_id)
+        }
+    )
+    actual_session_count = len(_sessions(label_list))
+    if int(manifest.get("work_episodes") or 0) != actual_episode_count:
+        raise ValueError("manifest work_episodes does not match labels")
+    if int(manifest.get("distinct_sessions") or 0) != actual_session_count:
+        raise ValueError("manifest distinct_sessions does not match labels")
+    if actual_episode_count < minimum_episodes:
         raise ValueError(f"real-corpus floor requires at least {minimum_episodes} episodes")
-    if int(manifest.get("distinct_sessions") or 0) < minimum_sessions:
+    if actual_session_count < minimum_sessions:
         raise ValueError(f"real-corpus floor requires at least {minimum_sessions} sessions")
