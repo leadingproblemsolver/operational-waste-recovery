@@ -32,3 +32,15 @@ jobs:
           assert 'Human approval is authoritative' in SYSTEM_PROMPT
           print('recovery-agent-import-smoke: PASS')
           PY
+      - name: Run judge scenarios
+        working-directory: hackathons/agents-for-humans/recovery-agent
+        run: |
+          mkdir -p proof
+          python -m recovery_agent.judge_runs --output proof/judge-scenarios.json
+      - name: Upload judge receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-agent-judge-receipt-${{ github.sha }}
+          path: hackathons/agents-for-humans/recovery-agent/proof/judge-scenarios.json
+          if-no-files-found: error
