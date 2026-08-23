@@ -1,0 +1,190 @@
+name: all-things-agentic-live-receipt
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: Google Cloud project ID
+        required: true
+      run_region:
+        description: Cloud Run region
+        required: true
+        default: me-central1
+      model_location:
+        description: Vertex AI Gemini endpoint location
+        required: true
+        default: global
+      service:
+        description: Cloud Run service name
+        required: true
+        default: recovery-taskmaster
+      run_id:
+        description: Judge/demo run ID
+        required: true
+        default: judge-demo-01
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-and-prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Require Google Cloud credential
+        env:
+          GCP_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
+        run: |
+          test -n "$GCP_CREDENTIALS" || (echo 'GCP_CREDENTIALS repository secret is required' && exit 1)
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+          project_id: ${{ inputs.project_id }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ inputs.project_id }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install Google Agents CLI
+        run: python -m pip install google-agents-cli
+
+      - name: Enable required Google Cloud APIs
+        run: |
+          gcloud services enable \
+            run.googleapis.com \
+            cloudbuild.googleapis.com \
+            artifactregistry.googleapis.com \
+            aiplatform.googleapis.com \
+            --project '${{ inputs.project_id }}'
+
+      - name: Deploy exact Taskmaster source to Cloud Run
+        working-directory: hackathons/all-things-agentic/recovery-taskmaster
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNTIME_SA="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -n 1)"
+          test -n "$RUNTIME_SA"
+          echo "Runtime service account: $RUNTIME_SA"
+
+          gcloud run deploy '${{ inputs.service }}' \
+            --source . \
+            --project '${{ inputs.project_id }}' \
+            --region '${{ inputs.run_region }}' \
+            --allow-unauthenticated \
+            --service-account "$RUNTIME_SA" \
+            --set-env-vars 'GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=${{ inputs.project_id }},GOOGLE_CLOUD_LOCATION=${{ inputs.model_location }},RECOVERY_TASKMASTER_ROOT=/tmp/recovery-taskmaster'
+
+      - name: Capture Cloud Run deployment receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/google-live
+          URL="$(gcloud run services describe '${{ inputs.service }}' \
+            --project '${{ inputs.project_id }}' \
+            --region '${{ inputs.run_region }}' \
+            --format='value(status.url)')"
+          REVISION="$(gcloud run services describe '${{ inputs.service }}' \
+            --project '${{ inputs.project_id }}' \
+            --region '${{ inputs.run_region }}' \
+            --format='value(status.latestReadyRevisionName)')"
+          test -n "$URL"
+          test -n "$REVISION"
+          printf '%s\n' "$URL" | tee artifacts/google-live/cloud-run-url.txt
+          printf '%s\n' "$REVISION" | tee artifacts/google-live/cloud-run-revision.txt
+          gcloud run services describe '${{ inputs.service }}' \
+            --project '${{ inputs.project_id }}' \
+            --region '${{ inputs.run_region }}' \
+            --format=json > artifacts/google-live/cloud-run-service.json
+
+          curl --fail --silent --show-error "$URL/healthz" \
+            | tee artifacts/google-live/healthz.json
+          grep -q 'recovery_taskmaster' artifacts/google-live/healthz.json
+
+      - name: Run deployed Gemini + ADK workflow to VERIFIED
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="$(cat artifacts/google-live/cloud-run-url.txt)"
+          PROMPT="Complete a recovery workflow for run_id ${{ inputs.run_id }}. Do the work end to end and stop only at VERIFIED or an explicit blocked state."
+
+          agents-cli run \
+            --url "$URL" \
+            --mode adk \
+            --app-name recovery_taskmaster \
+            --verbose \
+            "$PROMPT" \
+            | tee artifacts/google-live/live-agent-trace.txt
+
+          grep -q 'VERIFIED' artifacts/google-live/live-agent-trace.txt
+
+      - name: Capture Cloud Run execution logs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifacts/google-live
+          gcloud logging read \
+            'resource.type="cloud_run_revision" AND resource.labels.service_name="${{ inputs.service }}"' \
+            --project '${{ inputs.project_id }}' \
+            --limit 100 \
+            --freshness 30m \
+            --format=json > artifacts/google-live/cloud-run-logs.json || true
+
+      - name: Write bounded receipt index
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('artifacts/google-live')
+          url = (root / 'cloud-run-url.txt').read_text().strip() if (root / 'cloud-run-url.txt').exists() else None
+          revision = (root / 'cloud-run-revision.txt').read_text().strip() if (root / 'cloud-run-revision.txt').exists() else None
+          health = json.loads((root / 'healthz.json').read_text()) if (root / 'healthz.json').exists() else None
+          trace = (root / 'live-agent-trace.txt').read_text(errors='replace') if (root / 'live-agent-trace.txt').exists() else ''
+          receipt = {
+              'receipt_version': 1,
+              'commit_sha': '${{ github.sha }}',
+              'project_id': '${{ inputs.project_id }}',
+              'cloud_run_region': '${{ inputs.run_region }}',
+              'model_location': '${{ inputs.model_location }}',
+              'model': 'gemini-3.5-flash',
+              'service': '${{ inputs.service }}',
+              'run_id': '${{ inputs.run_id }}',
+              'cloud_run_url': url,
+              'cloud_run_revision': revision,
+              'health': health,
+              'verified_terminal_observed': 'VERIFIED' in trace,
+              'claim_boundary': {
+                  'proves': [
+                      'the exact GitHub branch was deployed to Google Cloud Run',
+                      'the deployed ADK service passed its health endpoint',
+                      'a remote Gemini 3.5 / ADK workflow was invoked against the deployed service',
+                      'the captured live trace contained a VERIFIED terminal state when successful',
+                  ],
+                  'does_not_prove': [
+                      'customer adoption',
+                      'realized financial savings',
+                      'production scale',
+                      'hackathon placement',
+                  ],
+              },
+          }
+          (root / 'receipt-index.json').write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
+          PY
+
+      - name: Upload Google Cloud live receipt pack
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-things-agentic-live-${{ github.sha }}
+          path: artifacts/google-live/
+          if-no-files-found: error

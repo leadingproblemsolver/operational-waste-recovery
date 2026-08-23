@@ -1,0 +1,56 @@
+name: all-things-agentic-recovery-taskmaster
+
+on:
+  pull_request:
+    paths:
+      - 'hackathons/all-things-agentic/recovery-taskmaster/**'
+      - '.github/workflows/all-things-agentic.yml'
+      - '.github/workflows/all-things-agentic-live.yml'
+  workflow_dispatch:
+
+jobs:
+  taskmaster:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: hackathons/all-things-agentic/recovery-taskmaster
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install Google ADK project
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install pytest
+      - name: Run bounded workflow tests
+        run: python -m pytest -q
+      - name: Import ADK agent and FastAPI deployment surface
+        run: |
+          python - <<'PY'
+          from recovery_taskmaster.agent import root_agent
+          from main import app
+          assert root_agent.name == 'recovery_taskmaster'
+          assert app.title
+          print('google-adk-import: PASS')
+          PY
+      - name: Build Cloud Run container
+        run: docker build -t recovery-taskmaster:ci .
+      - name: Boot container and verify health
+        run: |
+          docker run -d --rm --name recovery-taskmaster-ci \
+            -e GOOGLE_GENAI_USE_VERTEXAI=FALSE \
+            -p 127.0.0.1:8080:8080 \
+            recovery-taskmaster:ci
+          trap 'docker stop recovery-taskmaster-ci >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/healthz > /tmp/health.json; then
+              cat /tmp/health.json
+              grep -q 'recovery_taskmaster' /tmp/health.json
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs recovery-taskmaster-ci
+          exit 1
