@@ -1,0 +1,2 @@
+google-adk>=2.3,<3
+operational-waste-recovery @ git+https://github.com/leadingproblemsolver/operational-waste-recovery.git@e1c8bc8f3d9d57b87ba8adce62fe7f8ea78bc6a7
