@@ -1,0 +1,51 @@
+name: agents-for-humans-live-receipt
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: OpenAI model id
+        required: false
+        default: gpt-4o-mini
+      approval:
+        description: Explicit smoke approval branch
+        required: true
+        type: choice
+        options:
+          - 'yes'
+          - 'deny'
+        default: 'yes'
+
+jobs:
+  live-receipt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Require live model credential
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          test -n "$OPENAI_API_KEY" || (echo 'OPENAI_API_KEY repository secret is required' && exit 1)
+      - name: Install Recovery Agent
+        working-directory: hackathons/agents-for-humans/recovery-agent
+        run: python -m pip install -e '.[dev]'
+      - name: Run credentialed Strands agent and emit receipt
+        working-directory: hackathons/agents-for-humans/recovery-agent
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          mkdir -p proof
+          recovery-agent-live-smoke \
+            --model '${{ inputs.model }}' \
+            --approval '${{ inputs.approval }}' \
+            --output proof/live-agent-receipt.json
+      - name: Upload credentialed live-agent receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: agents-for-humans-live-${{ github.sha }}-${{ inputs.approval }}
+          path: hackathons/agents-for-humans/recovery-agent/proof/live-agent-receipt.json
+          if-no-files-found: error
