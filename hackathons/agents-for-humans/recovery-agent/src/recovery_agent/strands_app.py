@@ -16,6 +16,16 @@ from .core import (
 )
 
 
+SAFE_TOOL_NAMES = (
+    "inspect_coding_history",
+    "inspect_repository",
+    "get_recovery_evidence",
+    "run_recovery_preflight",
+    "propose_bounded_recovery_action",
+)
+MUTATING_TOOL_NAME = "execute_approved_recovery_action"
+
+
 @tool
 def inspect_coding_history(root: str, threshold: float = 0.72, limit: int = 5) -> str:
     """Analyze persisted coding-agent history and return observed repeated-work findings."""
@@ -45,7 +55,7 @@ def run_recovery_preflight(root: str, repo_path: str, finding_id: str) -> str:
 
 @tool
 def propose_bounded_recovery_action(root: str, repo_path: str, finding_id: str) -> str:
-    """Create one deterministic evidence-linked recovery action proposal. This does not mutate the repository."""
+    """Create one deterministic evidence-linked recovery action proposal without changing repo state."""
     return json.dumps(
         propose_recovery_action(root=root, repo_path=repo_path, finding_id=finding_id),
         sort_keys=True,
@@ -82,13 +92,6 @@ Do not create multiple actions, refactor the repository, edit source files, comm
 
 
 def build_agent(*, model: Any | None = None, ask: str | Any | None = "stdio") -> Agent:
-    safe_tools = [
-        "inspect_coding_history",
-        "inspect_repository",
-        "get_recovery_evidence",
-        "run_recovery_preflight",
-        "propose_bounded_recovery_action",
-    ]
     kwargs: dict[str, Any] = {
         "system_prompt": SYSTEM_PROMPT,
         "tools": [
@@ -102,7 +105,7 @@ def build_agent(*, model: Any | None = None, ask: str | Any | None = "stdio") ->
         "interventions": [
             HumanInTheLoop(
                 ask=ask,
-                allowed_tools=safe_tools,
+                allowed_tools=list(SAFE_TOOL_NAMES),
                 enable_trust=False,
             )
         ],
