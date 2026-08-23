@@ -6,10 +6,14 @@ on:
       project_id:
         description: Google Cloud project ID
         required: true
-      region:
-        description: Cloud Run / Vertex AI region
+      run_region:
+        description: Cloud Run region
         required: true
         default: me-central1
+      model_location:
+        description: Vertex AI Gemini endpoint location
+        required: true
+        default: global
       service:
         description: Cloud Run service name
         required: true
@@ -45,7 +49,7 @@ jobs:
         with:
           project_id: ${{ inputs.project_id }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
 
@@ -73,10 +77,10 @@ jobs:
           gcloud run deploy '${{ inputs.service }}' \
             --source . \
             --project '${{ inputs.project_id }}' \
-            --region '${{ inputs.region }}' \
+            --region '${{ inputs.run_region }}' \
             --allow-unauthenticated \
             --service-account "$RUNTIME_SA" \
-            --set-env-vars 'GOOGLE_GENAI_USE_ENTERPRISE=TRUE,GOOGLE_CLOUD_PROJECT=${{ inputs.project_id }},GOOGLE_CLOUD_LOCATION=${{ inputs.region }},RECOVERY_TASKMASTER_ROOT=/tmp/recovery-taskmaster'
+            --set-env-vars 'GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=${{ inputs.project_id }},GOOGLE_CLOUD_LOCATION=${{ inputs.model_location }},RECOVERY_TASKMASTER_ROOT=/tmp/recovery-taskmaster'
 
       - name: Capture Cloud Run deployment receipt
         shell: bash
@@ -85,13 +89,19 @@ jobs:
           mkdir -p artifacts/google-live
           URL="$(gcloud run services describe '${{ inputs.service }}' \
             --project '${{ inputs.project_id }}' \
-            --region '${{ inputs.region }}' \
+            --region '${{ inputs.run_region }}' \
             --format='value(status.url)')"
+          REVISION="$(gcloud run services describe '${{ inputs.service }}' \
+            --project '${{ inputs.project_id }}' \
+            --region '${{ inputs.run_region }}' \
+            --format='value(status.latestReadyRevisionName)')"
           test -n "$URL"
+          test -n "$REVISION"
           printf '%s\n' "$URL" | tee artifacts/google-live/cloud-run-url.txt
+          printf '%s\n' "$REVISION" | tee artifacts/google-live/cloud-run-revision.txt
           gcloud run services describe '${{ inputs.service }}' \
             --project '${{ inputs.project_id }}' \
-            --region '${{ inputs.region }}' \
+            --region '${{ inputs.run_region }}' \
             --format=json > artifacts/google-live/cloud-run-service.json
 
           curl --fail --silent --show-error "$URL/healthz" \
@@ -137,23 +147,27 @@ jobs:
 
           root = Path('artifacts/google-live')
           url = (root / 'cloud-run-url.txt').read_text().strip() if (root / 'cloud-run-url.txt').exists() else None
+          revision = (root / 'cloud-run-revision.txt').read_text().strip() if (root / 'cloud-run-revision.txt').exists() else None
           health = json.loads((root / 'healthz.json').read_text()) if (root / 'healthz.json').exists() else None
           trace = (root / 'live-agent-trace.txt').read_text(errors='replace') if (root / 'live-agent-trace.txt').exists() else ''
           receipt = {
               'receipt_version': 1,
               'commit_sha': '${{ github.sha }}',
               'project_id': '${{ inputs.project_id }}',
-              'region': '${{ inputs.region }}',
+              'cloud_run_region': '${{ inputs.run_region }}',
+              'model_location': '${{ inputs.model_location }}',
+              'model': 'gemini-3.5-flash',
               'service': '${{ inputs.service }}',
               'run_id': '${{ inputs.run_id }}',
               'cloud_run_url': url,
+              'cloud_run_revision': revision,
               'health': health,
               'verified_terminal_observed': 'VERIFIED' in trace,
               'claim_boundary': {
                   'proves': [
                       'the exact GitHub branch was deployed to Google Cloud Run',
                       'the deployed ADK service passed its health endpoint',
-                      'a remote Gemini/ADK workflow was invoked against the deployed service',
+                      'a remote Gemini 3.5 / ADK workflow was invoked against the deployed service',
                       'the captured live trace contained a VERIFIED terminal state when successful',
                   ],
                   'does_not_prove': [
