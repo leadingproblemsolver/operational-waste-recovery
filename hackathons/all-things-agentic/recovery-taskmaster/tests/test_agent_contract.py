@@ -16,6 +16,7 @@ def test_root_agent_uses_required_google_model_and_bounded_tools() -> None:
     }
 
     instruction = str(root_agent.instruction)
-    assert "finish only when verification returns VERIFIED" in instruction
-    assert "Never invent finding IDs" in instruction
-    assert "outside the bounded run workspace" in instruction
+    normalized = instruction.lower()
+    assert "finish only when verification returns verified" in normalized
+    assert "never invent finding ids" in normalized
+    assert "outside the bounded run workspace" in normalized
