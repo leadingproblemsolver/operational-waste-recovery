@@ -33,9 +33,9 @@ def inspect_repo_state(repo_path: str) -> dict[str, object]:
         raise RecoveryAgentError("repo_path must be an existing directory")
     _git(repo, "rev-parse", "--git-dir")
     changed = tuple(
-        line[3:].strip()
+        line[2:].strip()
         for line in _git(repo, "status", "--porcelain=v1").splitlines()
-        if len(line) >= 4
+        if len(line) >= 3 and line[2:].strip()
     )
     return RepoState(
         str(repo),
