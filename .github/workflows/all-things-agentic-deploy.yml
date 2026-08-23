@@ -1,0 +1,104 @@
+name: all-things-agentic-deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: Cloud Run region
+        required: false
+        default: me-central1
+      service:
+        description: Cloud Run service name
+        required: false
+        default: recovery-taskmaster
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Resolve project and prepare Artifact Registry
+        id: gcp
+        shell: bash
+        run: |
+          PROJECT_ID="$(gcloud config get-value project)"
+          test -n "$PROJECT_ID" && test "$PROJECT_ID" != "(unset)"
+          echo "project_id=$PROJECT_ID" >> "$GITHUB_OUTPUT"
+          gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com aiplatform.googleapis.com
+          gcloud artifacts repositories describe recovery-taskmaster \
+            --location='${{ inputs.region }}' >/dev/null 2>&1 || \
+          gcloud artifacts repositories create recovery-taskmaster \
+            --repository-format=docker \
+            --location='${{ inputs.region }}' \
+            --description='All Things Agentic Recovery Taskmaster images'
+
+      - name: Build contest image
+        working-directory: hackathons/all-things-agentic/recovery-taskmaster
+        shell: bash
+        run: |
+          IMAGE='${{ inputs.region }}-docker.pkg.dev/${{ steps.gcp.outputs.project_id }}/recovery-taskmaster/${{ inputs.service }}:${{ github.sha }}'
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          gcloud builds submit --tag "$IMAGE" .
+
+      - name: Deploy public Cloud Run service
+        shell: bash
+        run: |
+          gcloud run deploy '${{ inputs.service }}' \
+            --image "$IMAGE" \
+            --region '${{ inputs.region }}' \
+            --platform managed \
+            --allow-unauthenticated \
+            --set-env-vars 'GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=${{ steps.gcp.outputs.project_id }},GOOGLE_CLOUD_LOCATION=global,RECOVERY_TASKMASTER_ROOT=/tmp/recovery-taskmaster' \
+            --quiet
+
+      - name: Health-check and emit public deployment receipt
+        shell: bash
+        run: |
+          URL="$(gcloud run services describe '${{ inputs.service }}' --region '${{ inputs.region }}' --format='value(status.url)')"
+          test -n "$URL"
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent "$URL/healthz" > /tmp/health.json; then
+              break
+            fi
+            sleep 3
+          done
+          cat /tmp/health.json
+          grep -q 'recovery_taskmaster' /tmp/health.json
+          mkdir -p artifacts/deploy
+          python - <<PY
+          import json, os
+          health = json.load(open('/tmp/health.json', encoding='utf-8'))
+          receipt = {
+              'receipt_version': 1,
+              'commit_sha': os.environ['GITHUB_SHA'],
+              'service': '${{ inputs.service }}',
+              'region': '${{ inputs.region }}',
+              'public_url': '$URL',
+              'health': health,
+              'image': os.environ['IMAGE'],
+              'model_runtime': 'Gemini via Vertex AI / Google ADK',
+              'claim_boundary': 'Proves public Google Cloud deployment and executable ADK service health at this commit; live agent VERIFIED run remains a separate receipt.'
+          }
+          open('artifacts/deploy/taskmaster-cloud-run.json','w',encoding='utf-8').write(json.dumps(receipt, indent=2)+'\n')
+          print(json.dumps(receipt, indent=2))
+          PY
+
+      - name: Upload deployment receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: taskmaster-cloud-run-${{ github.sha }}
+          path: artifacts/deploy/taskmaster-cloud-run.json
+          if-no-files-found: error
