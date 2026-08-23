@@ -25,12 +25,19 @@ class PredictionStore:
         )
 
 
-def label(left: str, right: str, session: str, value: str) -> PairLabel:
+def label(
+    left: str,
+    right: str,
+    left_session: str,
+    value: str,
+    right_session: str | None = None,
+) -> PairLabel:
     return PairLabel.from_mapping(
         {
             "left_event_id": left,
             "right_event_id": right,
-            "session_id": session,
+            "left_session_id": left_session,
+            "right_session_id": right_session or left_session,
             "label": value,
             "evidence": f"human comparison of {left} and {right}",
         }
@@ -65,6 +72,25 @@ def test_real_corpus_metrics_preserve_ambiguity_and_failure_examples() -> None:
     assert report["false_negatives"][0]["label"] == "repeated_work"
     assert report["confidence_stratified_precision"][">=0.90"]["precision"] == 1.0
     assert report["confidence_stratified_precision"][">=0.80"]["precision"] == 0.5
+
+
+def test_cross_session_pair_keeps_event_to_session_provenance_when_ids_reorder() -> None:
+    item = PairLabel.from_mapping(
+        {
+            "left_event_id": "z-event",
+            "right_event_id": "a-event",
+            "left_session_id": "later-session",
+            "right_session_id": "earlier-session",
+            "label": "repeated_work",
+            "evidence": "same unresolved task reconstructed after context loss",
+        }
+    )
+
+    assert item.left_event_id == "a-event"
+    assert item.left_session_id == "earlier-session"
+    assert item.right_event_id == "z-event"
+    assert item.right_session_id == "later-session"
+    assert item.crosses_sessions is True
 
 
 def test_evaluator_refuses_selective_precision_when_prediction_is_unlabeled() -> None:
