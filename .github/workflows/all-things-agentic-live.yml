@@ -35,14 +35,14 @@ jobs:
 
       - name: Require Google Cloud credential
         env:
-          GCP_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
         run: |
-          test -n "$GCP_CREDENTIALS" || (echo 'GCP_CREDENTIALS repository secret is required' && exit 1)
+          test -n "$GCP_SA_KEY" || (echo 'GCP_SA_KEY repository secret is required' && exit 1)
 
       - id: auth
         uses: google-github-actions/auth@v3
         with:
-          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
           project_id: ${{ inputs.project_id }}
 
       - uses: google-github-actions/setup-gcloud@v3
