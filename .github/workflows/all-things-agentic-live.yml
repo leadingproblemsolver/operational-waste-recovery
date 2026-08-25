@@ -33,11 +33,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Prepare proof directory
+        run: mkdir -p artifacts/google-live
+
       - name: Require Google Cloud credential
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        shell: bash
         run: |
-          test -n "$GCP_SA_KEY" || (echo 'GCP_SA_KEY repository secret is required' && exit 1)
+          set -euo pipefail
+          test -n "$GCP_SA_KEY" || (echo 'BLOCKED: GCP_SA_KEY repository secret is required' && exit 1)
+          echo "PASS: GCP_SA_KEY reached runner (masked; length=${#GCP_SA_KEY})"
 
       - id: auth
         uses: google-github-actions/auth@v3
@@ -56,14 +62,27 @@ jobs:
       - name: Install Google Agents CLI
         run: python -m pip install google-agents-cli
 
-      - name: Enable required Google Cloud APIs
+      - name: Verify required Google Cloud APIs are pre-enabled
+        shell: bash
         run: |
-          gcloud services enable \
-            run.googleapis.com \
-            cloudbuild.googleapis.com \
-            artifactregistry.googleapis.com \
-            aiplatform.googleapis.com \
-            --project '${{ inputs.project_id }}'
+          set -euo pipefail
+          REQUIRED=(
+            run.googleapis.com
+            cloudbuild.googleapis.com
+            artifactregistry.googleapis.com
+            aiplatform.googleapis.com
+          )
+          ENABLED="$(gcloud services list --enabled --project '${{ inputs.project_id }}' --format='value(config.name)')"
+          missing=0
+          for api in "${REQUIRED[@]}"; do
+            if grep -qx "$api" <<<"$ENABLED"; then
+              echo "PASS: $api enabled"
+            else
+              echo "BLOCKED: $api is not enabled. Enable it once with a project owner/admin identity before rerunning."
+              missing=1
+            fi
+          done
+          test "$missing" -eq 0
 
       - name: Deploy exact Taskmaster source to Cloud Run
         working-directory: hackathons/all-things-agentic/recovery-taskmaster
@@ -86,7 +105,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p artifacts/google-live
           URL="$(gcloud run services describe '${{ inputs.service }}' \
             --project '${{ inputs.project_id }}' \
             --region '${{ inputs.run_region }}' \
@@ -146,6 +164,7 @@ jobs:
           from pathlib import Path
 
           root = Path('artifacts/google-live')
+          root.mkdir(parents=True, exist_ok=True)
           url = (root / 'cloud-run-url.txt').read_text().strip() if (root / 'cloud-run-url.txt').exists() else None
           revision = (root / 'cloud-run-revision.txt').read_text().strip() if (root / 'cloud-run-revision.txt').exists() else None
           health = json.loads((root / 'healthz.json').read_text()) if (root / 'healthz.json').exists() else None
@@ -163,6 +182,7 @@ jobs:
               'cloud_run_revision': revision,
               'health': health,
               'verified_terminal_observed': 'VERIFIED' in trace,
+              'execution_contract': 'persisted evidence -> scoped action -> independent reread -> verified settlement',
               'claim_boundary': {
                   'proves': [
                       'the exact GitHub branch was deployed to Google Cloud Run',
@@ -174,6 +194,7 @@ jobs:
                       'customer adoption',
                       'realized financial savings',
                       'production scale',
+                      'logistics-operator deployment',
                       'hackathon placement',
                   ],
               },
