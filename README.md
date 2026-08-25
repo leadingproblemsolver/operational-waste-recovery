@@ -1,5 +1,20 @@
 # Operational Waste Recovery
 
+> ## Google All Things Agentic — Recovery Taskmaster
+>
+> **Taskmaster submission:** a Gemini 3.5 + Google ADK autonomous execution agent that recovers already-completed investigation, performs exactly one bounded recovery action, independently rereads the result, and terminates only at `VERIFIED` or an explicit blocked/failure state.
+>
+> **Judge path:** [`hackathons/all-things-agentic/recovery-taskmaster/README.md`](hackathons/all-things-agentic/recovery-taskmaster/README.md)  
+> **Devpost-ready submission copy + demo script:** [`hackathons/all-things-agentic/recovery-taskmaster/SUBMISSION.md`](hackathons/all-things-agentic/recovery-taskmaster/SUBMISSION.md)
+>
+> ```text
+> persisted evidence → Gemini/ADK orchestration → scoped action → independent reread → VERIFIED settlement
+> ```
+>
+> This contest project uses Operational Waste Recovery as an explicitly disclosed, pinned pre-existing evidence dependency. The Google ADK/Gemini agent layer, bounded autonomous workflow, Cloud Run service/deployment path, action verification, tests, and submission receipts are contest-specific work.
+
+---
+
 A local-first tool that imports AI/engineering work telemetry, detects repeated work, produces reusable context capsules, and exports inspectable evidence.
 
 ## Immediate user workflow
