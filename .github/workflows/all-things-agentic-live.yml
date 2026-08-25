@@ -2,41 +2,35 @@ name: all-things-agentic-live-receipt
 
 on:
   workflow_dispatch:
-    inputs:
-      project_id:
-        description: Google Cloud project ID
-        required: true
-        default: signalops-506419
-      run_region:
-        description: Cloud Run region
-        required: true
-        default: me-central1
-      model_location:
-        description: Vertex AI Gemini endpoint location
-        required: true
-        default: global
-      service:
-        description: Cloud Run service name
-        required: true
-        default: recovery-taskmaster
-      run_id:
-        description: Judge/demo run ID
-        required: true
-        default: judge-demo-01
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/all-things-agentic-live.yml'
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
   deploy-and-prove:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      PROJECT_ID: signalops-506419
+      RUN_REGION: me-central1
+      MODEL_LOCATION: global
+      SERVICE: recovery-taskmaster
+      PROOF_RUN_ID: judge-demo-${{ github.run_id }}
+
     steps:
       - uses: actions/checkout@v7
 
       - name: Prepare proof directory
-        run: mkdir -p artifacts/google-live
+        shell: bash
+        run: |
+          mkdir -p artifacts/google-live
+          printf '%s\n' prepared > artifacts/google-live/phase.txt
 
       - id: auth
         name: Authenticate to Google Cloud with GitHub OIDC
@@ -44,11 +38,11 @@ jobs:
         with:
           workload_identity_provider: projects/625265193189/locations/global/workloadIdentityPools/github-actions/providers/github
           service_account: recovery-taskmaster-deployer@signalops-506419.iam.gserviceaccount.com
-          project_id: ${{ inputs.project_id }}
+          project_id: signalops-506419
 
       - uses: google-github-actions/setup-gcloud@v3
         with:
-          project_id: ${{ inputs.project_id }}
+          project_id: signalops-506419
 
       - uses: actions/setup-python@v6
         with:
@@ -58,10 +52,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test '${{ inputs.project_id }}' = 'signalops-506419' || (echo 'BLOCKED: this proof workflow is bound to signalops-506419' && exit 1)
+          test "$PROJECT_ID" = 'signalops-506419' || (echo 'BLOCKED: this proof workflow is bound to signalops-506419' && exit 1)
           ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -n 1)"
           test "$ACCOUNT" = 'recovery-taskmaster-deployer@signalops-506419.iam.gserviceaccount.com' || (echo "BLOCKED: unexpected active identity: $ACCOUNT" && exit 1)
           echo "PASS: keyless GitHub OIDC authenticated as $ACCOUNT"
+          printf '%s\n' authenticated > artifacts/google-live/phase.txt
 
       - name: Install Google Agents CLI
         run: python -m pip install google-agents-cli
@@ -76,7 +71,7 @@ jobs:
             artifactregistry.googleapis.com
             aiplatform.googleapis.com
           )
-          ENABLED="$(gcloud services list --enabled --project '${{ inputs.project_id }}' --format='value(config.name)')"
+          ENABLED="$(gcloud services list --enabled --project "$PROJECT_ID" --format='value(config.name)')"
           missing=0
           for api in "${REQUIRED[@]}"; do
             if grep -qx "$api" <<<"$ENABLED"; then
@@ -87,6 +82,7 @@ jobs:
             fi
           done
           test "$missing" -eq 0
+          printf '%s\n' apis_ready > artifacts/google-live/phase.txt
 
       - name: Deploy exact Taskmaster source to Cloud Run
         working-directory: hackathons/all-things-agentic/recovery-taskmaster
@@ -96,45 +92,48 @@ jobs:
           RUNTIME_SA='recovery-taskmaster-deployer@signalops-506419.iam.gserviceaccount.com'
           echo "Runtime service account: $RUNTIME_SA"
 
-          gcloud run deploy '${{ inputs.service }}' \
+          gcloud run deploy "$SERVICE" \
             --source . \
-            --project '${{ inputs.project_id }}' \
-            --region '${{ inputs.run_region }}' \
+            --project "$PROJECT_ID" \
+            --region "$RUN_REGION" \
             --allow-unauthenticated \
             --service-account "$RUNTIME_SA" \
-            --set-env-vars 'GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=${{ inputs.project_id }},GOOGLE_CLOUD_LOCATION=${{ inputs.model_location }},RECOVERY_TASKMASTER_ROOT=/tmp/recovery-taskmaster'
+            --set-env-vars "GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=$MODEL_LOCATION,RECOVERY_TASKMASTER_ROOT=/tmp/recovery-taskmaster"
+
+          printf '%s\n' deployed > "$GITHUB_WORKSPACE/artifacts/google-live/phase.txt"
 
       - name: Capture Cloud Run deployment receipt
         shell: bash
         run: |
           set -euo pipefail
-          URL="$(gcloud run services describe '${{ inputs.service }}' \
-            --project '${{ inputs.project_id }}' \
-            --region '${{ inputs.run_region }}' \
+          URL="$(gcloud run services describe "$SERVICE" \
+            --project "$PROJECT_ID" \
+            --region "$RUN_REGION" \
             --format='value(status.url)')"
-          REVISION="$(gcloud run services describe '${{ inputs.service }}' \
-            --project '${{ inputs.project_id }}' \
-            --region '${{ inputs.run_region }}' \
+          REVISION="$(gcloud run services describe "$SERVICE" \
+            --project "$PROJECT_ID" \
+            --region "$RUN_REGION" \
             --format='value(status.latestReadyRevisionName)')"
           test -n "$URL"
           test -n "$REVISION"
           printf '%s\n' "$URL" | tee artifacts/google-live/cloud-run-url.txt
           printf '%s\n' "$REVISION" | tee artifacts/google-live/cloud-run-revision.txt
-          gcloud run services describe '${{ inputs.service }}' \
-            --project '${{ inputs.project_id }}' \
-            --region '${{ inputs.run_region }}' \
+          gcloud run services describe "$SERVICE" \
+            --project "$PROJECT_ID" \
+            --region "$RUN_REGION" \
             --format=json > artifacts/google-live/cloud-run-service.json
 
           curl --fail --silent --show-error "$URL/healthz" \
             | tee artifacts/google-live/healthz.json
           grep -q 'recovery_taskmaster' artifacts/google-live/healthz.json
+          printf '%s\n' healthy > artifacts/google-live/phase.txt
 
       - name: Run deployed Gemini + ADK workflow to VERIFIED
         shell: bash
         run: |
           set -euo pipefail
           URL="$(cat artifacts/google-live/cloud-run-url.txt)"
-          PROMPT="Complete a recovery workflow for run_id ${{ inputs.run_id }}. Do the work end to end and stop only at VERIFIED or an explicit blocked state."
+          PROMPT="Complete a recovery workflow for run_id $PROOF_RUN_ID. Do the work end to end and stop only at VERIFIED or an explicit blocked state."
 
           agents-cli run \
             --url "$URL" \
@@ -145,71 +144,124 @@ jobs:
             | tee artifacts/google-live/live-agent-trace.txt
 
           grep -q 'VERIFIED' artifacts/google-live/live-agent-trace.txt
+          printf '%s\n' verified > artifacts/google-live/phase.txt
 
       - name: Capture Cloud Run execution logs
         if: always()
         shell: bash
         run: |
           mkdir -p artifacts/google-live
-          gcloud logging read \
-            'resource.type="cloud_run_revision" AND resource.labels.service_name="${{ inputs.service }}"' \
-            --project '${{ inputs.project_id }}' \
-            --limit 100 \
-            --freshness 30m \
-            --format=json > artifacts/google-live/cloud-run-logs.json || true
+          if command -v gcloud >/dev/null 2>&1; then
+            gcloud logging read \
+              "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"$SERVICE\"" \
+              --project "$PROJECT_ID" \
+              --limit 100 \
+              --freshness 30m \
+              --format=json > artifacts/google-live/cloud-run-logs.json || printf '%s\n' '[]' > artifacts/google-live/cloud-run-logs.json
+          else
+            printf '%s\n' '[]' > artifacts/google-live/cloud-run-logs.json
+          fi
 
       - name: Write bounded receipt index
         if: always()
         shell: bash
+        env:
+          WORKFLOW_STATUS: ${{ job.status }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          python - <<'PY'
+          python3 - <<'PY'
           import json
+          import os
           from pathlib import Path
 
           root = Path('artifacts/google-live')
           root.mkdir(parents=True, exist_ok=True)
-          url = (root / 'cloud-run-url.txt').read_text().strip() if (root / 'cloud-run-url.txt').exists() else None
-          revision = (root / 'cloud-run-revision.txt').read_text().strip() if (root / 'cloud-run-revision.txt').exists() else None
-          health = json.loads((root / 'healthz.json').read_text()) if (root / 'healthz.json').exists() else None
-          trace = (root / 'live-agent-trace.txt').read_text(errors='replace') if (root / 'live-agent-trace.txt').exists() else ''
+
+          def read_text(name):
+              path = root / name
+              return path.read_text(errors='replace').strip() if path.exists() else None
+
+          def read_json(name):
+              path = root / name
+              if not path.exists():
+                  return None
+              try:
+                  return json.loads(path.read_text())
+              except Exception as exc:
+                  return {'receipt_parse_error': type(exc).__name__}
+
+          url = read_text('cloud-run-url.txt')
+          revision = read_text('cloud-run-revision.txt')
+          health = read_json('healthz.json')
+          trace = read_text('live-agent-trace.txt') or ''
+          phase = read_text('phase.txt') or 'unknown'
+          proof_run_id = os.environ['PROOF_RUN_ID']
+          workflow_status = os.environ.get('WORKFLOW_STATUS', 'unknown')
+          verified = 'VERIFIED' in trace
+
           receipt = {
-              'receipt_version': 1,
-              'commit_sha': '${{ github.sha }}',
-              'project_id': '${{ inputs.project_id }}',
-              'cloud_run_region': '${{ inputs.run_region }}',
-              'model_location': '${{ inputs.model_location }}',
+              'receipt_version': 2,
+              'proof_status': 'VERIFIED' if workflow_status == 'success' and verified else 'INCOMPLETE',
+              'workflow_status': workflow_status,
+              'last_completed_phase': phase,
+              'event_name': os.environ.get('EVENT_NAME'),
+              'github_workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
+              'github_workflow_run_attempt': os.environ.get('GITHUB_RUN_ATTEMPT'),
+              'source_commit_sha': os.environ.get('GITHUB_SHA'),
+              'project_id': os.environ['PROJECT_ID'],
+              'cloud_run_region': os.environ['RUN_REGION'],
+              'model_location': os.environ['MODEL_LOCATION'],
               'model': 'gemini-3.5-flash',
-              'service': '${{ inputs.service }}',
-              'run_id': '${{ inputs.run_id }}',
+              'service': os.environ['SERVICE'],
+              'run_id': proof_run_id,
               'cloud_run_url': url,
+              'cloud_run_inspector_url': f'{url}/inspector?run_id={proof_run_id}' if url else None,
               'cloud_run_revision': revision,
               'health': health,
-              'verified_terminal_observed': 'VERIFIED' in trace,
+              'verified_terminal_observed': verified,
               'authentication': 'GitHub OIDC -> Google Workload Identity Federation -> service account impersonation',
               'execution_contract': 'persisted evidence -> scoped action -> independent reread -> verified settlement',
               'claim_boundary': {
-                  'proves': [
-                      'the exact GitHub branch was deployed to Google Cloud Run',
+                  'proves_when_verified': [
+                      'the source commit was deployed to Google Cloud Run',
                       'the deployed ADK service passed its health endpoint',
                       'a remote Gemini 3.5 / ADK workflow was invoked against the deployed service',
-                      'the captured live trace contained a VERIFIED terminal state when successful',
+                      'the captured live trace contained a VERIFIED terminal state',
                   ],
                   'does_not_prove': [
                       'customer adoption',
                       'realized financial savings',
                       'production scale',
-                      'logistics-operator deployment',
-                      'hackathon placement',
+                      'multi-instance durable persistence',
+                      'settlement for non-queryable external side effects',
                   ],
               },
           }
           (root / 'receipt-index.json').write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
+          print(json.dumps(receipt, indent=2, sort_keys=True))
           PY
 
       - name: Upload Google Cloud live receipt pack
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: all-things-agentic-live-${{ github.sha }}
+          name: taskmaster-google-live-${{ github.sha }}-${{ github.run_id }}
           path: artifacts/google-live/
           if-no-files-found: error
+
+      - name: Publish sanitized live status branch
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f artifacts/google-live/receipt-index.json
+          cp artifacts/google-live/receipt-index.json /tmp/taskmaster-google-live-latest.json
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -C proof/taskmaster-google-live-status
+          mkdir -p proof
+          cp /tmp/taskmaster-google-live-latest.json proof/taskmaster-google-live-latest.json
+          git add -- proof/taskmaster-google-live-latest.json
+          git commit -m 'proof: publish Taskmaster Google live status'
+          git push --force origin HEAD:refs/heads/proof/taskmaster-google-live-status
