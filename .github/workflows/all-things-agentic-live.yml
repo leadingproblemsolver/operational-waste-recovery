@@ -6,6 +6,7 @@ on:
       project_id:
         description: Google Cloud project ID
         required: true
+        default: signalops-506419
       run_region:
         description: Cloud Run region
         required: true
@@ -25,6 +26,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   deploy-and-prove:
@@ -36,19 +38,12 @@ jobs:
       - name: Prepare proof directory
         run: mkdir -p artifacts/google-live
 
-      - name: Require Google Cloud credential
-        env:
-          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "$GCP_SA_KEY" || (echo 'BLOCKED: GCP_SA_KEY repository secret is required' && exit 1)
-          echo "PASS: GCP_SA_KEY reached runner (masked; length=${#GCP_SA_KEY})"
-
       - id: auth
+        name: Authenticate to Google Cloud with GitHub OIDC
         uses: google-github-actions/auth@v3
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: projects/625265193189/locations/global/workloadIdentityPools/github-actions/providers/github
+          service_account: recovery-taskmaster-deployer@signalops-506419.iam.gserviceaccount.com
           project_id: ${{ inputs.project_id }}
 
       - uses: google-github-actions/setup-gcloud@v3
@@ -58,6 +53,15 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
+
+      - name: Verify intended project and identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test '${{ inputs.project_id }}' = 'signalops-506419' || (echo 'BLOCKED: this proof workflow is bound to signalops-506419' && exit 1)
+          ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -n 1)"
+          test "$ACCOUNT" = 'recovery-taskmaster-deployer@signalops-506419.iam.gserviceaccount.com' || (echo "BLOCKED: unexpected active identity: $ACCOUNT" && exit 1)
+          echo "PASS: keyless GitHub OIDC authenticated as $ACCOUNT"
 
       - name: Install Google Agents CLI
         run: python -m pip install google-agents-cli
@@ -89,8 +93,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          RUNTIME_SA="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -n 1)"
-          test -n "$RUNTIME_SA"
+          RUNTIME_SA='recovery-taskmaster-deployer@signalops-506419.iam.gserviceaccount.com'
           echo "Runtime service account: $RUNTIME_SA"
 
           gcloud run deploy '${{ inputs.service }}' \
@@ -182,6 +185,7 @@ jobs:
               'cloud_run_revision': revision,
               'health': health,
               'verified_terminal_observed': 'VERIFIED' in trace,
+              'authentication': 'GitHub OIDC -> Google Workload Identity Federation -> service account impersonation',
               'execution_contract': 'persisted evidence -> scoped action -> independent reread -> verified settlement',
               'claim_boundary': {
                   'proves': [
