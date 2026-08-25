@@ -1,0 +1,95 @@
+name: taskmaster-external-reconciliation-receipt
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/taskmaster-external-reconciliation.yml'
+      - 'hackathons/all-things-agentic/recovery-taskmaster/scripts/github_external_reconciliation.py'
+
+permissions:
+  contents: write
+
+jobs:
+  external-reconciliation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PROOF_SCRIPT: hackathons/all-things-agentic/recovery-taskmaster/scripts/github_external_reconciliation.py
+      PROOF_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}
+      PROOF_STATE: artifacts/external-reconcile/state.json
+      PROOF_RECEIPT: artifacts/external-reconcile/receipt.json
+      GITHUB_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Compile external reconciliation harness
+        run: python -m py_compile "$PROOF_SCRIPT"
+
+      - name: Execute real remote mutation then simulate local crash
+        shell: bash
+        run: |
+          set +e
+          python "$PROOF_SCRIPT" execute-crash \
+            --run-id "$PROOF_RUN_ID" \
+            --state "$PROOF_STATE" \
+            --receipt "$PROOF_RECEIPT"
+          rc=$?
+          set -e
+          echo "Observed simulated crash exit code: $rc"
+          test "$rc" -eq 86
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          state = json.loads(Path('artifacts/external-reconcile/state.json').read_text())
+          assert state['state'] == 'ACTION_PENDING', state
+          assert state['action_dispatch_count'] == 1, state
+          print('PASS: durable local state remained ACTION_PENDING after accepted remote mutation')
+          PY
+
+      - name: Fresh process reconciles GitHub before any retry
+        run: |
+          python "$PROOF_SCRIPT" resume \
+            --run-id "$PROOF_RUN_ID" \
+            --state "$PROOF_STATE" \
+            --receipt "$PROOF_RECEIPT"
+
+      - name: Assert external settlement receipt
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          receipt = json.loads(Path('artifacts/external-reconcile/receipt.json').read_text())
+          assert receipt['terminal_state'] == 'VERIFIED', receipt
+          assert receipt['recovered_from_state'] == 'ACTION_PENDING', receipt
+          assert receipt['fresh_process_reconciliation'] is True, receipt
+          assert receipt['blind_retry_performed'] is False, receipt
+          assert receipt['action_dispatch_count'] == 1, receipt
+          assert receipt['remote_mutation_commit_count'] == 1, receipt
+          assert receipt['duplicate_remote_mutation_detected'] is False, receipt
+          assert receipt['expected_sha256'] == receipt['observed_sha256'], receipt
+          print('PASS: real external mutation reconciled and VERIFIED with exactly one remote mutation')
+          PY
+
+      - name: Upload external reconciliation receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: taskmaster-external-reconciliation-${{ github.sha }}-${{ github.run_id }}
+          path: artifacts/external-reconcile/
+          if-no-files-found: warn
+
+      - name: Delete ephemeral proof branch
+        if: always()
+        run: |
+          python "$PROOF_SCRIPT" cleanup \
+            --run-id "$PROOF_RUN_ID" \
+            --state "$PROOF_STATE" \
+            --receipt "$PROOF_RECEIPT"
