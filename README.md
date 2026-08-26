@@ -2,16 +2,38 @@
 
 > ## Google All Things Agentic — Recovery Taskmaster
 >
-> **Taskmaster submission:** a Gemini 3.5 + Google ADK autonomous execution agent that recovers already-completed investigation, performs exactly one bounded recovery action, independently rereads the result, and terminates only at `VERIFIED` or an explicit blocked/failure state.
+> **Friction:** interrupted or retried agent work can repeat investigation — and, after an uncertain side effect, can blindly repeat the action itself.
 >
-> **Judge path:** [`hackathons/all-things-agentic/recovery-taskmaster/README.md`](hackathons/all-things-agentic/recovery-taskmaster/README.md)  
-> **Devpost-ready submission copy + demo script:** [`hackathons/all-things-agentic/recovery-taskmaster/SUBMISSION.md`](hackathons/all-things-agentic/recovery-taskmaster/SUBMISSION.md)
+> **What Recovery Taskmaster does:** Gemini 3.5 + Google ADK reconstructs persisted evidence, performs one bounded recovery action, and host code refuses to declare success until the resulting state has been independently reread and verified.
+>
+> **The failure case that matters:**
 >
 > ```text
-> persisted evidence → Gemini/ADK orchestration → scoped action → independent reread → VERIFIED settlement
+> action dispatched
+> → side effect happens
+> → process dies before success is durably recorded
+> → fresh process sees ACTION_PENDING
+> → reconcile reality before retry
+> → no duplicate action
+> → VERIFIED
 > ```
 >
-> This contest project uses Operational Waste Recovery as an explicitly disclosed, pinned pre-existing evidence dependency. The Google ADK/Gemini agent layer, bounded autonomous workflow, Cloud Run service/deployment path, action verification, tests, and submission receipts are contest-specific work.
+> **Judge path:** [`hackathons/all-things-agentic/recovery-taskmaster/README.md`](hackathons/all-things-agentic/recovery-taskmaster/README.md)  
+> **Devpost-ready copy + <=4 minute demo script:** [`hackathons/all-things-agentic/recovery-taskmaster/SUBMISSION.md`](hackathons/all-things-agentic/recovery-taskmaster/SUBMISSION.md)  
+> **Latest Google Cloud live receipt:** [`proof/taskmaster-google-live-latest.json`](https://github.com/leadingproblemsolver/operational-waste-recovery/blob/proof/taskmaster-google-live-status/proof/taskmaster-google-live-latest.json)
+>
+> ```text
+> persisted evidence
+> → host-enforced state
+> → Gemini/ADK orchestration
+> → bounded action
+> → reconcile / independent reread
+> → VERIFIED | BLOCKED | FAILED
+> ```
+>
+> Gemini chooses the next action only through four scoped tools. Deterministic host code owns evidence truth, legal state transitions, mutation scope, ambiguous-execution reconciliation, and final verification.
+>
+> This contest project uses Operational Waste Recovery as an explicitly disclosed, pinned pre-existing evidence dependency. The Gemini/ADK agent layer, bounded autonomous workflow, host state machine, crash-reconciliation path, Cloud Run deployment/live-proof path, and contest-specific receipts are disclosed separately.
 
 ---
 
