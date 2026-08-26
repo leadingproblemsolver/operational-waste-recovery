@@ -2,141 +2,48 @@
 
 **Category:** Taskmaster  
 **Deadline:** August 31, 2026, 5:00 PM PT  
-**Core proof:** one autonomous workflow reaches a real bounded side effect and independently verified terminal state.
+**Stack:** Gemini 3.5 Flash + Google ADK + Vertex AI + Google Cloud Run  
+**Core proof:** the agent takes a real bounded action, but host code will not call the workflow complete until the resulting state has been independently reconciled and verified.
 
-## One-line pitch
+## The friction in 15 seconds
 
-**Recovery Taskmaster is a Gemini 3.5 + Google ADK proof-carrying execution agent that recovers already-completed investigation from persisted evidence, performs exactly one bounded recovery action, and independently verifies the resulting state before declaring the workflow complete.**
+Interrupted or retried agent work loses operational continuity. The immediate cost is repeated investigation. The dangerous edge is worse: an action can succeed externally, the worker can die before recording success, and a fresh worker can blindly perform the action again.
 
-```text
-sanitized coding-agent history + isolated workspace
-        ↓
-Gemini 3.5 via Google ADK
-        ↓
-prepare deterministic persisted evidence
-        ↓
-inspect exact evidence + Recovery Capsule
-        ↓
-materialize one bounded recovery artifact
-        ↓
-independently reread + verify SHA-256
-        ↓
-VERIFIED | BLOCKED | FAILED
-```
-
-This is deliberately **not a chatbot**. The success condition is an externally inspectable state transition with a receipt.
-
-## Why this is the Taskmaster entry
-
-The personal friction is execution continuity: interrupted coding-agent work often causes the same investigation to be reconstructed before useful work resumes. Recovery Taskmaster intercepts that repeated-work pattern and autonomously completes the recovery chore end to end.
-
-The judge/demo fixture is explicitly synthetic and sanitized so the full workflow is reproducible without exposing private coding history. It demonstrates the execution contract without claiming real-user adoption, production ROI, or realized savings.
-
-## Logistinfra alignment — exact scope boundary
-
-Recovery Taskmaster is the **agentic execution primitive** we want to carry forward into Logistinfra, not a full logistics product inside this hackathon.
-
-The reusable execution contract is:
+Recovery Taskmaster turns that into one autonomous workflow:
 
 ```text
-persisted evidence
+recover persisted evidence
 → establish current state
-→ choose one scoped action
-→ execute inside a bounded authority surface
-→ reread external state
-→ independently verify settlement
-→ durable receipt
+→ perform one bounded recovery action
+→ independently reread the result
+→ VERIFIED | BLOCKED | FAILED
 ```
 
-That maps directly to Logistinfra's broader exception-to-action direction, where agents must not silently jump from uncertain evidence to a resolved state. For this hackathon, we keep the demonstrator narrow and honest: coding-continuity is the BYOF instance; proof-carrying execution is the reusable system contribution.
-
-## Judging criteria → exact evidence
-
-| Criterion | Weight | What the judge should see |
-| --- | ---: | --- |
-| Innovation & Operational Utility | 40% | A real multi-step background recovery chore completed autonomously; no manual tool ordering; a file is actually created; terminal state is not model prose but verified execution. |
-| Architectural Discipline & Tech Stack | 30% | Gemini 3.5 + Google ADK + Cloud Run; persisted state; four scoped tools; no shell/arbitrary filesystem; path containment; fail-closed evidence gates; replay-safe mutation; independent SHA verification. |
-| Demo & Production Readiness | 30% | Public repo, architecture diagram, reproducible setup, Cloud Run proof, unedited live tool sequence, exact revision/URL, health response, live trace and receipt pack. |
-
-## Required stack
-
-**Contest-specific**
-- Gemini 3.5 Flash (`gemini-3.5-flash`)
-- Google Agent Development Kit (ADK)
-- Vertex AI (`GOOGLE_GENAI_USE_VERTEXAI=TRUE`)
-- Google Cloud Run
-- FastAPI ADK service
-- four scoped Python tools
-- isolated `/tmp/recovery-taskmaster/<run_id>` workspace
-- SHA-256 execution receipts
-- GitHub Actions deployment + live proof workflow
-
-**Explicitly pre-existing dependency**
-- Operational Waste Recovery pinned at commit `e1c8bc8f3d9d57b87ba8adce62fe7f8ea78bc6a7`
-- supplies canonical persistence, deterministic repeated-work detection, evidence review and Recovery Capsule generation
-
-No other project is presented as contest-created work.
-
-## Agent authority model
-
-The ADK agent gets exactly four tools:
-
-1. `prepare_demo_run(run_id)` — prepare one deterministic sanitized history/workspace fixture and return the strongest persisted finding.
-2. `inspect_recovery_evidence(run_id, finding_id)` — load exact persisted episodes + Recovery Capsule; missing evidence blocks.
-3. `materialize_recovery_capsule(run_id, finding_id)` — perform exactly one permitted mutation: write `.recovery/recovery-<finding>.md` inside the isolated workspace.
-4. `verify_recovery_receipt(run_id, finding_id, expected_sha256)` — independently reread the artifact and recompute its hash.
-
-The model cannot invent finding IDs, choose arbitrary paths, run shell commands, write outside the run workspace, overwrite an existing recovery note, or certify its own side effect.
-
-## State machine / failure semantics
+The architectural differentiator is the ambiguous-execution path:
 
 ```text
-OBSERVED
-  ↓
-EVIDENCE_PRESENT ──missing──> BLOCKED
-  ↓
-ACTION_READY
-  ↓
-EXECUTED ──replay──> ALREADY_EXISTS
-  ↓
-INDEPENDENT_REREAD
-  ↓
-VERIFIED | FAILED
+ACTION_PENDING persisted
+→ side effect happens
+→ process dies before EXECUTED is persisted
+→ fresh process starts
+→ reconcile target before any retry
+→ effect exists: do not execute again
+→ verify receipt
+→ VERIFIED
 ```
 
-Additional hard gates:
+**This is not a chatbot.** Success is a state transition with a machine-checkable receipt, not model prose.
+
+## User workflow
+
+One operator request starts the workflow:
 
 ```text
-invalid run_id/path → rejected → zero action
-missing finding      → BLOCKED  → zero action
-missing capsule      → BLOCKED  → zero action
-hash mismatch        → FAILED
-replay               → same artifact/hash; no overwrite
+Complete a recovery workflow for run_id judge-demo-01.
+Do the work end to end and stop only at VERIFIED or an explicit blocked state.
 ```
 
-## Architecture
-
-```mermaid
-flowchart LR
-    U[Judge / operator] --> CR[Cloud Run ADK service]
-    CR --> G[Gemini 3.5]
-    G --> P[prepare_demo_run]
-    P --> O[(Pinned OWR SQLite state)]
-    G --> E[inspect_recovery_evidence]
-    E --> O
-    G --> M[materialize_recovery_capsule]
-    M --> W[Bounded isolated workspace]
-    G --> V[verify_recovery_receipt]
-    V --> W
-    V --> R{Settlement}
-    R -->|hash matches| D[VERIFIED + receipt]
-    R -->|missing evidence| B[BLOCKED]
-    R -->|mismatch| F[FAILED]
-```
-
-## Expected judge-visible outcome
-
-For `run_id=judge-demo-01`, the expected visible sequence is:
+Gemini then works through four scoped ADK tools:
 
 ```text
 prepare_demo_run
@@ -146,18 +53,187 @@ prepare_demo_run
 → VERIFIED
 ```
 
-The irreversible proof pack should contain:
+The judge/demo fixture is intentionally synthetic and sanitized so the workflow is reproducible without exposing private coding history. The BYOF friction is real: interrupted coding-agent work repeatedly reconstructing investigation before useful work resumes.
+
+## Why this maps directly to the Taskmaster rubric
+
+| Official criterion | Weight | Judge-visible evidence |
+| --- | ---: | --- |
+| **Innovation & Operational Utility** | **40%** | A messy multi-step continuity chore is intercepted and completed autonomously; the system takes action rather than returning advice; no human manually orders the tools. |
+| **Architectural Discipline & Tech Stack** | **30%** | Gemini 3.5 + ADK + Vertex AI + Cloud Run; persisted state; four scoped tools; host-enforced legal transitions; bounded paths; fail-closed evidence gates; `ACTION_PENDING`; reconcile-before-retry; independent verification. |
+| **Demo & Production Readiness** | **30%** | Public repo, architecture diagram, reproducible tests, exact Cloud Run URL/revision receipt, live remote Gemini/ADK trace, terminal `VERIFIED`, Cloud Run logs and receipt pack. |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    U[Operator] --> CR[Google Cloud Run ADK service]
+    CR --> G[Gemini 3.5 Flash]
+    G --> P[prepare_demo_run]
+    P --> O[(Persisted OWR SQLite evidence)]
+    G --> E[inspect_recovery_evidence]
+    E --> O
+    G --> M[materialize_recovery_capsule]
+    M --> H[Host state machine]
+    H --> W[Bounded recovery target]
+    G --> V[verify_recovery_receipt]
+    V --> W
+    V --> R{Independent settlement}
+    R -->|match| D[VERIFIED + receipt]
+    R -->|missing evidence| B[BLOCKED]
+    R -->|mismatch| F[FAILED]
+```
+
+The model is autonomous over workflow progression **inside** the tool contract. It is not authoritative over truth.
 
 ```text
-exact Git commit SHA
-Cloud Run public URL
-Cloud Run exact revision
-GET /healthz → 200
-live Gemini/ADK tool trace
-VERIFIED terminal state
-Cloud Run logs
-JSON receipt index
+Gemini / ADK owns:
+- choosing the next scoped tool
+- completing the multi-step workflow
+
+Host code owns:
+- evidence existence
+- legal state transitions
+- finding authorization
+- path containment
+- the only permitted mutation
+- ambiguous-execution reconciliation
+- final verification
 ```
+
+## Host-owned state machine
+
+The current implementation—not an aspirational diagram—is:
+
+```text
+OBSERVED
+  ↓ inspect exact persisted evidence
+EVIDENCE_READY
+  ↓ persist ambiguity boundary before mutation
+ACTION_PENDING
+  ↓ execute OR reconcile an already-existing effect
+EXECUTED
+  ↓ independent reread
+VERIFIED | FAILED
+
+missing/unauthorized evidence or illegal transition → BLOCKED
+```
+
+### The crash window we explicitly test
+
+```text
+1. persist ACTION_PENDING
+2. perform the side effect
+3. crash before EXECUTED is durably recorded
+4. start a fresh process
+5. observe ACTION_PENDING
+6. reread the target before retry
+7. if effect exists, reconcile it rather than execute again
+8. verify expected SHA == observed SHA
+9. reach VERIFIED with action_count == 1
+```
+
+That directly addresses the distributed-systems failure mode where “tool call returned” and “external state safely settled” are not equivalent.
+
+## Agent authority surface
+
+The ADK agent has exactly four tools:
+
+1. `prepare_demo_run(run_id)` — create one deterministic sanitized history/workspace fixture and persist `OBSERVED`.
+2. `inspect_recovery_evidence(run_id, finding_id)` — load exact persisted evidence; host code advances only a legal `OBSERVED → EVIDENCE_READY` transition.
+3. `materialize_recovery_capsule(run_id, finding_id)` — persist `ACTION_PENDING`, perform the sole allowed mutation, or reconcile an existing effect before retrying.
+4. `verify_recovery_receipt(run_id, finding_id, expected_sha256)` — independently reread the target and settle `EXECUTED → VERIFIED | FAILED`.
+
+The model cannot choose arbitrary output paths, run shell commands, write outside the isolated workspace, overwrite an existing recovery artifact, invent an authorized finding, or certify its own side effect.
+
+## Failure semantics
+
+```text
+invalid run_id/path     → rejected / zero action
+missing preparation     → BLOCKED / zero action
+wrong finding_id        → BLOCKED / zero action
+missing evidence        → BLOCKED / zero action
+illegal transition      → BLOCKED
+ambiguous prior action  → reconcile target before retry
+replay after execution  → ALREADY_EXISTS / same target / no overwrite
+hash mismatch           → FAILED
+verified reread         → VERIFIED
+```
+
+## Real external-system reconciliation proof
+
+The core Taskmaster action is deliberately bounded to an isolated recovery artifact for a deterministic judge demo. Separately, the repo includes a hostile proof harness against the **GitHub Contents API** to test the same ambiguity boundary against a real remote system:
+
+```text
+persist ACTION_PENDING locally
+→ perform one real GitHub remote mutation
+→ terminate before local success settlement
+→ fresh Python process
+→ GET remote GitHub state before any retry
+→ compare expected vs observed content hash
+→ require one remote mutation commit
+→ emit settlement receipt
+→ clean up the ephemeral proof branch
+```
+
+Implementation:
+
+- [`scripts/github_external_reconciliation.py`](scripts/github_external_reconciliation.py)
+- [`.github/workflows/taskmaster-external-reconciliation.yml`](../../../.github/workflows/taskmaster-external-reconciliation.yml)
+
+This supports the architecture claim; it does not turn the judge fixture into a claim of production-scale distributed exactly-once execution.
+
+## Google stack and deployment
+
+Contest-specific runtime:
+
+- Gemini 3.5 Flash (`gemini-3.5-flash`)
+- Google Agent Development Kit (ADK)
+- Vertex AI (`GOOGLE_GENAI_USE_VERTEXAI=TRUE`)
+- Google Cloud Run
+- FastAPI ADK service
+- GitHub Actions
+- SHA-256 receipts
+
+Authentication is **keyless**:
+
+```text
+GitHub Actions OIDC
+→ Google Workload Identity Federation
+→ recovery-taskmaster-deployer@signalops-506419.iam.gserviceaccount.com
+```
+
+No long-lived service-account JSON key is required by the live workflow.
+
+One-time project prerequisites are the relevant Google Cloud APIs plus the minimum IAM needed for Cloud Run source build/deploy and Vertex AI invocation. The build identity uses `roles/run.builder`.
+
+## Live Google Cloud proof
+
+Canonical workflow:
+
+```text
+.github/workflows/all-things-agentic-live.yml
+```
+
+It performs:
+
+```text
+keyless OIDC authentication
+→ required API check
+→ exact-source Cloud Run deploy
+→ capture public URL + ready revision
+→ optional advisory health probe
+→ invoke deployed Gemini/ADK service
+→ require live trace to contain VERIFIED
+→ capture Cloud Run logs
+→ publish receipt pack
+```
+
+The health endpoint is **not** the proof gate. The decisive condition is the remote deployed agent actually completing the workflow to `VERIFIED`.
+
+Latest sanitized live status:
+
+[`proof/taskmaster-google-live-latest.json`](https://github.com/leadingproblemsolver/operational-waste-recovery/blob/proof/taskmaster-google-live-status/proof/taskmaster-google-live-latest.json)
 
 ## Local verification
 
@@ -171,73 +247,52 @@ pip install pytest
 pytest -q
 ```
 
-Tests mechanically verify the positive path, replay/idempotency, missing evidence block, path escape rejection, and exact ADK model/tool contract.
+Tests cover the normal success path plus replay/idempotency, missing evidence, invalid paths, hash mismatch, host-state ordering and the ambiguous post-action crash/reconciliation path.
 
-## Live Google Cloud proof
+## What the final video must prove
 
-Repository secret required:
-
-```text
-GCP_SA_KEY=<complete fresh service-account JSON>
-```
-
-One-time project bootstrap must be performed by a project owner/admin before the least-privilege deploy identity runs:
-
-```bash
-PROJECT_ID='your-project-id'
-gcloud config set project "$PROJECT_ID"
-gcloud services enable \
-  run.googleapis.com \
-  cloudbuild.googleapis.com \
-  artifactregistry.googleapis.com \
-  aiplatform.googleapis.com \
-  logging.googleapis.com
-```
-
-Runtime/deploy identities then need only the roles required for Cloud Run source deployment, build, Vertex AI invocation, service-account use, and proof-log reads. The deploy workflow should not need API-administration authority after bootstrap.
-
-Manual GitHub Actions workflow:
+The official rubric heavily rewards undeniable proof rather than feature count. The <=4 minute video should therefore show only this:
 
 ```text
-all-things-agentic-live-receipt
-project_id: <Google Cloud project>
-run_region: me-central1
-model_location: global
-service: recovery-taskmaster
-run_id: judge-demo-01
+0:00  friction: interrupted/retried agents can repeat work or side effects
+0:25  architecture: Gemini orchestrates; host code controls truth and settlement
+0:55  Google Cloud Run exact service/revision
+1:15  unedited live Gemini/ADK workflow
+2:30  bounded action + SHA receipt + VERIFIED
+3:00  ambiguous crash test: ACTION_PENDING → reconcile → action_count 1
+3:35  repo / receipt / pre-existing-work disclosure
+3:55  stop
 ```
 
-Canonical live prompt:
-
-```text
-Complete a recovery workflow for run_id judge-demo-01. Do the work end to end and stop only at VERIFIED or an explicit blocked state.
-```
-
-## Submission receipts checklist
-
-```text
-[ ] local tests green
-[ ] exact submission head green in GitHub Actions
-[ ] required Google Cloud APIs pre-enabled
-[ ] GCP_SA_KEY stored as repository secret
-[ ] Cloud Run URL + exact revision captured
-[ ] /healthz returns 200
-[ ] live Gemini/ADK trace reaches VERIFIED
-[ ] receipt-index.json captured
-[ ] <=4 minute public YouTube/Vimeo demo uploaded
-[ ] Devpost hosted-project/repo/video fields completed
-[ ] pre-existing OWR disclosure retained
-[ ] social post with #AllThingsAgenticHackathon published (optional +0.2)
-[ ] public build write-up published with contest disclosure (optional +0.2)
-[ ] Devpost submission finalized
-```
+No frontend polish, extra agents or extra providers are required for this proof.
 
 ## Pre-existing work disclosure
 
-This submission does **not** claim OWR was created during the contest. OWR supplies the deterministic persistence/evidence primitives listed above. Contest-specific work is the Gemini/ADK Taskmaster application layer, autonomous bounded workflow, four tool contracts, workspace/action verification, Cloud Run service/deployment path, tests, live proof workflow, and submission material.
+Operational Waste Recovery is an explicitly disclosed pre-existing dependency pinned at commit `e1c8bc8f3d9d57b87ba8adce62fe7f8ea78bc6a7`. It supplies persistence, deterministic repeated-work detection, evidence review and Recovery Capsule generation.
 
-Reality Handoff and Agent Reliability Preflight informed the design principle that deterministic evidence/failure gates outrank model assertions; their source is not copied into this submission.
+Contest-specific work includes the Gemini/ADK Taskmaster application layer, four bounded tool contracts, host-owned execution state machine, ambiguous-crash reconciliation path, Cloud Run service/deployment proof, external reconciliation harness, tests, receipts and submission material.
+
+Reality Handoff and Agent Reliability Preflight informed the fail-closed design principle; their source is not copied into this submission.
 
 ## Claim boundary
 
-A successful hosted demo proves that Gemini through Google ADK completed this bounded workflow on Google Cloud, created the recovery artifact, and independently verified its receipt. It does **not** prove customer adoption, real-user corpus performance, realized financial savings, production scale, logistics-operator deployment, or hackathon placement.
+A green hosted receipt proves that the exact source was deployed to Google Cloud Run and that Gemini through Google ADK completed this bounded workflow to a captured `VERIFIED` terminal state. The hostile tests demonstrate specific retry/reconciliation invariants under controlled conditions.
+
+It does **not** prove customer adoption, real-user corpus performance, realized financial savings, production scale, logistics-operator deployment, universal exactly-once semantics or hackathon placement.
+
+## Submission completion gate
+
+```text
+[x] local/CI bounded workflow proof
+[x] host-enforced state machine
+[x] ambiguous-crash/no-duplicate recovery test
+[x] keyless OIDC/WIF Google authentication
+[x] Cloud Run deployment path
+[x] public repository + architecture
+[x] pre-existing-work disclosure
+[ ] green remote Gemini/ADK → VERIFIED receipt
+[ ] public <=4 minute YouTube/Vimeo demo
+[ ] Devpost final fields + submit
+```
+
+After those three unchecked items, stop building and submit.
