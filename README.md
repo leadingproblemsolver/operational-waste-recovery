@@ -96,6 +96,62 @@ owrp purge --before 2026-01-01T00:00:00Z --yes
 
 Purge invalidates duplicate/capsule analysis so it must be regenerated.
 
+### Hosted test
+
+Recovery Taskmaster is publicly deployed on Google Cloud Run:
+
+https://recovery-taskmaster-dzoo5fey5q-ww.a.run.app
+
+Install Google's Agents CLI:
+
+```bash
+python -m pip install google-agents-cli
+```
+
+Invoke the deployed ADK agent:
+
+```bash
+agents-cli run \
+  --url "https://recovery-taskmaster-dzoo5fey5q-ww.a.run.app" \
+  --mode adk \
+  --app-name recovery_taskmaster \
+  --verbose \
+  "Complete a recovery workflow for run_id judge-demo-01. Do the work end to end and stop only at VERIFIED or an explicit blocked state."
+```
+
+Expected terminal outcome:
+
+```text
+VERIFIED
+```
+
+The public deployment receipt is available at:
+
+https://github.com/leadingproblemsolver/operational-waste-recovery/blob/proof/taskmaster-google-live-status/proof/taskmaster-google-live-latest.json
+
+### Local verification
+
+From:
+
+```text
+hackathons/all-things-agentic/recovery-taskmaster
+```
+
+run:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pip install pytest
+pytest -q
+```
+
+Tests include normal execution, replay/idempotency, missing evidence, path validation, hash mismatch, state-order enforcement, and ambiguous post-action crash reconciliation.
+
+The synthetic judge fixture is intentionally sanitized and reproducible. Operational Waste Recovery is disclosed as a pre-existing dependency; the Gemini/ADK Recovery Taskmaster layer is the hackathon-specific project.
+
+
 ## Evidence boundary
 
 Duplicate and recovery values are deterministic measurements over imported data. They are not proof of realized labor savings, production ROI, or organization-wide waste.
