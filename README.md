@@ -39,6 +39,8 @@
 
 A local-first tool that imports AI/engineering work telemetry, detects repeated work, produces reusable context capsules, and exports inspectable evidence.
 
+**Reliability case study:** [`Replay, atomic failure, container loss, and outage recovery`](docs/stateful-ingest-reliability-case.md)
+
 ## Immediate user workflow
 
 ```bash
