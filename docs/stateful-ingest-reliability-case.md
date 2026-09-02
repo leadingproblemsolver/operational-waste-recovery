@@ -16,6 +16,19 @@ The active path is intentionally small:
 
 The runtime proof builds the repository's actual Docker image and gives SQLite its own Docker volume. The same state is then exercised through packaged CLI commands and the running HTTP service.
 
+## Verified public receipt
+
+The bounded Docker runtime workflow completed successfully in GitHub Actions on August 29, 2026 at commit [`34c86fc9ac025b73fe68f6f89365e5df9efdc9ef`](https://github.com/leadingproblemsolver/operational-waste-recovery/commit/34c86fc9ac025b73fe68f6f89365e5df9efdc9ef).
+
+- [GitHub Actions run #33266050126](https://github.com/leadingproblemsolver/operational-waste-recovery/actions/runs/33266050126)
+- [Reliability contract at the verified commit](https://github.com/leadingproblemsolver/operational-waste-recovery/blob/34c86fc9ac025b73fe68f6f89365e5df9efdc9ef/RUNTIME_RELIABILITY_PROOF.md)
+- [Executable runtime harness at the verified commit](https://github.com/leadingproblemsolver/operational-waste-recovery/blob/34c86fc9ac025b73fe68f6f89365e5df9efdc9ef/scripts/runtime_proof.py)
+- [Runtime-proof CI wiring at the verified commit](https://github.com/leadingproblemsolver/operational-waste-recovery/blob/34c86fc9ac025b73fe68f6f89365e5df9efdc9ef/.github/workflows/runtime-proof.yml)
+- [Architecture at the verified commit](https://github.com/leadingproblemsolver/operational-waste-recovery/blob/34c86fc9ac025b73fe68f6f89365e5df9efdc9ef/docs/ARCHITECTURE.md)
+- [Release claim boundary at the verified commit](https://github.com/leadingproblemsolver/operational-waste-recovery/blob/34c86fc9ac025b73fe68f6f89365e5df9efdc9ef/RELEASE_CHECKLIST.md)
+
+This receipt is intentionally bounded: it establishes GitHub-hosted Docker/runtime verification for the stated invariants. It is not a production-traffic, uptime, scale, or customer-use claim.
+
 ## The invariants
 
 ### 1. Replay must not create another fact
