@@ -71,21 +71,35 @@ Invoke-WebRequest : The operation has timed out.
 
 Interpretation: no successful HTTP response was obtained within the client deadline. A timeout must not be classified as an HTTP 4xx/5xx response.
 
-## Attempted but not yet validly exercised
+### 4. Invalid-token attempt against wrong endpoint → HTTP 404
 
-### Invalid bearer token / expected auth failure
-
-The first attempts used cURL-style `-H` syntax, which PowerShell rejected because `Invoke-WebRequest -Headers` requires a dictionary.
-
-Correct PowerShell command for the next human run:
+Command attempted:
 
 ```powershell
-Invoke-WebRequest \
-  -Uri "https://api.github.com/user" \
+Invoke-WebRequest `
+  -Uri "https://api.github.com/leadingproblemsolver" `
   -Headers @{ Authorization = "Bearer definitely-invalid-token" }
 ```
 
-Expected classification to verify from the actual response: authentication failure. Do not mark this case as confirmed until the command is run and the returned status/body is observed.
+Observed:
+
+```text
+Invoke-WebRequest : The remote server returned an error: (404) Not Found.
+```
+
+Interpretation: this does **not** verify authentication handling. The endpoint itself is invalid for the intended auth test, so the observed `404` is a resource/route failure, not an auth failure.
+
+## Auth case still unverified
+
+Use the authenticated-user endpoint exactly:
+
+```powershell
+Invoke-WebRequest `
+  -Uri "https://api.github.com/user" `
+  -Headers @{ Authorization = "Bearer definitely-invalid-token" }
+```
+
+Expected classification to verify from the actual response: authentication failure. Do not mark this case as confirmed until the returned status/body is observed.
 
 ## Foundation receipts earned
 
@@ -93,11 +107,12 @@ Expected classification to verify from the actual response: authentication failu
 - distinguished an HTTP error response from a client-side timeout;
 - identified a real shell/runtime mismatch: PowerShell aliases `curl` to `Invoke-WebRequest` in this environment;
 - corrected the timeout syntax to native PowerShell semantics;
-- preserved the auth case as unverified rather than inferring success from a malformed command.
+- caught an endpoint-selection error before misclassifying a `404` as authentication failure;
+- preserved the auth case as unverified rather than inferring success from the wrong endpoint.
 
 ## Next bounded test
 
-Run the corrected invalid-token request and record the actual status/body. Then implement or verify a tiny client classification boundary:
+Run the corrected invalid-token request against `/user` and record the actual status/body. Then implement or verify a tiny client classification boundary:
 
 ```text
 2xx     -> success
