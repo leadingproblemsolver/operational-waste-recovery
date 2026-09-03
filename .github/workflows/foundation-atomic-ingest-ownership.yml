@@ -1,0 +1,29 @@
+name: foundation-atomic-ingest-ownership
+
+on:
+  push:
+    branches:
+      - proof/foundation-atomic-ingest-ownership-2026-09-03
+  pull_request:
+    paths:
+      - "proof/foundation-ownership/**"
+      - "evals/atomic_ingest/**"
+      - "src/owrp/**"
+      - ".github/workflows/foundation-atomic-ingest-ownership.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  grade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Grade candidate
+        run: |
+          python evals/atomic_ingest/grader.py \
+            --candidate proof/foundation-ownership/candidate.py
