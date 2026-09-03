@@ -89,9 +89,9 @@ Invoke-WebRequest : The remote server returned an error: (404) Not Found.
 
 Interpretation: this does **not** verify authentication handling. The endpoint itself is invalid for the intended auth test, so the observed `404` is a resource/route failure, not an auth failure.
 
-## Auth case still unverified
+### 5. Invalid bearer token against authenticated-user endpoint → HTTP 401
 
-Use the authenticated-user endpoint exactly:
+Command:
 
 ```powershell
 Invoke-WebRequest `
@@ -99,7 +99,15 @@ Invoke-WebRequest `
   -Headers @{ Authorization = "Bearer definitely-invalid-token" }
 ```
 
-Expected classification to verify from the actual response: authentication failure. Do not mark this case as confirmed until the returned status/body is observed.
+Observed:
+
+```text
+Invoke-WebRequest : The remote server returned an error: (401) Unauthorized.
+```
+
+Interpretation: the route exists, but the presented credentials are not accepted for the requested authenticated operation.
+
+**Learned:** `404` means the requested route/resource was not found (or intentionally hidden), while `401` means the server recognized the request target but requires valid authentication credentials.
 
 ## Foundation receipts earned
 
@@ -108,11 +116,12 @@ Expected classification to verify from the actual response: authentication failu
 - identified a real shell/runtime mismatch: PowerShell aliases `curl` to `Invoke-WebRequest` in this environment;
 - corrected the timeout syntax to native PowerShell semantics;
 - caught an endpoint-selection error before misclassifying a `404` as authentication failure;
-- preserved the auth case as unverified rather than inferring success from the wrong endpoint.
+- verified an actual `401 Unauthorized` using the correct authenticated-user endpoint;
+- established the base client classification boundary: `2xx -> success`, `401 -> auth_failure`, `404 -> not_found`, `timeout -> timeout`.
 
 ## Next bounded test
 
-Run the corrected invalid-token request against `/user` and record the actual status/body. Then implement or verify a tiny client classification boundary:
+Implement or verify a tiny client classification boundary:
 
 ```text
 2xx     -> success
