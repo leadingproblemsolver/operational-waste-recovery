@@ -1,4 +1,4 @@
-# Human-tried HTTP probe — PowerShell
+# Human-tried HTTP probe  PowerShell
 
 Operator label: `lpsatwork`
 
