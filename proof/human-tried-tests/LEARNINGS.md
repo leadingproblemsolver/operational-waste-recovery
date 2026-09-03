@@ -13,6 +13,12 @@ Purpose: accumulate concise, evidence-backed operational/programmatic learnings 
 - A timeout is a transport/client-deadline failure, not an HTTP status response; classify it separately from `4xx`/`5xx`.
 - Client classification boundary established manually: `2xx -> success`, `401 -> auth_failure`, `404 -> not_found`, `timeout -> timeout`.
 
+## 2026-09-04 — SQL / persistence
+
+- An empty SQL result is not evidence that the query is wrong; verify upstream state first. In this run, ingestion failed because the input file was unavailable, so `interactions` remained `0` and no idempotency claim was earned.
+- A traceback from the ingestion layer is not a SQL query result; classify failures by layer before drawing conclusions.
+- `PRAGMA table_info(interactions)` showed `event_id` as the primary key, but primary-key/idempotency behavior still requires a successful repeated ingest to verify.
+
 ## Entry rule
 
 Append only when a manual or externally observed run changes what we can confidently claim. Prefer one-line causal lessons over generic notes.
